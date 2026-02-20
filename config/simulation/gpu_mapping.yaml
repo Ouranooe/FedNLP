@@ -1,0 +1,66 @@
+# You can define a cluster containing multiple GPUs within multiple machines by defining `gpu_mapping.yaml` as follows:
+#
+# config_cluster0:
+#     host_name_node0: [num_of_processes_on_GPU0, num_of_processes_on_GPU1, num_of_processes_on_GPU2, num_of_processes_on_GPU3, ..., num_of_processes_on_GPU_n]
+#     host_name_node1: [num_of_processes_on_GPU0, num_of_processes_on_GPU1, num_of_processes_on_GPU2, num_of_processes_on_GPU3, ..., num_of_processes_on_GPU_n]
+#     host_name_node_m: [num_of_processes_on_GPU0, num_of_processes_on_GPU1, num_of_processes_on_GPU2, num_of_processes_on_GPU3, ..., num_of_processes_on_GPU_n]
+
+# =========================
+# Single-machine, Single-GPU
+# NOTE:
+# - Only GPU0 exists, so each host must map to a single-element list: [num_processes_on_gpu0]
+# - Typically: num_processes = num_clients + 1 (server)
+# =========================
+
+# this is used for 10 clients and 1 server training within a single machine (single GPU)
+mapping_default:
+  TURTLELaptop: [2]
+
+# this is used for 4 clients and 1 server training within a single machine (single GPU)
+mapping_config1_5:
+  TURTLELaptop: [5]
+
+# this is used for 10 clients and 1 server training within a single machine (single GPU)
+mapping_config2_11:
+  TURTLELaptop: [11]
+
+# this is used for 10 clients and 1 server training within a single machine (single GPU)
+mapping_config3_11:
+  TURTLELaptop: [11]
+
+# this is used for 4 clients and 1 server training within a single machine (single GPU)
+# (skip GPU device ID is not applicable on single GPU, so we just map total processes to GPU0)
+mapping_config4_5:
+  TURTLELaptop: [5]
+
+# this is used for 4 clients and 1 server training using multiple machines in original example,
+# but on single machine + single GPU we map all processes to GPU0
+mapping_config5_6:
+  TURTLELaptop: [5]
+
+# this is used for 4 clients and 1 server training using 2 machines in original example,
+# but on single machine + single GPU we map all processes to GPU0
+mapping_config5_2:
+  TURTLELaptop: [5]
+
+# this is used for 10 clients and 1 server training using 4 machines in original example,
+# but on single machine + single GPU we map all processes to GPU0
+mapping_config5_4:
+  TURTLELaptop: [11]
+
+# =========================
+# gRPC / torch RPC mappings
+# On single GPU, everything is on the same host (server + clients all share GPU0)
+# =========================
+
+# for grpc GPU mapping (single GPU)
+mapping_FedML_gRPC:
+  TURTLELaptop: [2]   # minimal safe default: 1 server + 1 client
+
+# for torch RPC GPU mapping (single GPU)
+mapping_FedML_tRPC:
+  TURTLELaptop: [2]   # minimal safe default: 1 server + 1 client
+
+# for fednlp_sp mapping (single GPU)
+mapping_fednlp_sp:
+  TURTLELaptop: [2]   # minimal safe default: 1 server + 1 client
