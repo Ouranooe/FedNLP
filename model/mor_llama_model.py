@@ -278,15 +278,6 @@ class MoRLlamaForSequenceClassification(nn.Module):
         Returns:
             Tuple of (loss, logits, hidden_states, attentions)
         """
-        # Get model dtype and convert inputs to match (fix fp16/fp32 mismatch)
-        target_dtype = next(self.mor_llama.parameters()).dtype
-        
-        # Convert attention_mask and inputs_embeds to model dtype if needed
-        if attention_mask is not None and attention_mask.dtype != target_dtype:
-            attention_mask = attention_mask.to(target_dtype)
-        if inputs_embeds is not None and inputs_embeds.dtype != target_dtype:
-            inputs_embeds = inputs_embeds.to(target_dtype)
-        
         # Get outputs from MoR LLaMA model (access the inner model, not the causal LM)
         outputs = self.mor_llama.model(
             input_ids=input_ids,

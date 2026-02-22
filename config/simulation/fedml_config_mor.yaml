@@ -5,18 +5,17 @@ common_args:
 data_args:
   dataset: "20news"
   data_file_path: ~/fednlp_data/data_files/20news_data.h5
-  #partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
-  #partition_method: "uniform"
   partition_file_path: ~/fednlp_data/partition_files/20news_partition_20.h5
-  partition_method: "niid_label_clients=4_alpha=0.5"
+  partition_method: "niid_label_clients=20_alpha=0.5"
   reprocess_input_data: false
+
 
 model_args:
   # 使用 MoR LLaMA 模型
   model_type: "mor_llama"
   model_class: "transformer"
   # 基础模型，可选: HuggingFaceTB/SmolLM-360M, meta-llama/Llama-2-7b-hf 等
-  model: "HuggingFaceTB/SmolLM2-135M"
+  model: "HuggingFaceTB/SmolLM-135M"
   do_lower_case: false
   formulation: "classification"
 
@@ -81,25 +80,22 @@ kv_sharing_args:
 train_args:
   federated_optimizer: "FedAvg"
   client_id_list: "[]"
-  client_num_in_total: 4
+  client_num_in_total: 20
   client_num_per_round: 1
   comm_round: 1
   epochs: 1
-  # MoR 模型建议使用较小的 batch_size
-  batch_size: 8
-  eval_batch_size: 4
-  # LLaMA 模型需要更大的 max_seq_length
-  max_seq_length: 512
-  fp16: True
+  batch_size: 16
+  eval_batch_size: 8
+  max_seq_length: 128
+  fp16: False
   output_dir: "/home/ouranooe/output_dir"
   client_optimizer: AdamW
   server_optimizer: sgd
   server_momentum: 0.9
   server_lr: 0.1
-  # MoR 模型建议使用较小的学习率
-  learning_rate: 0.00005
-  weight_decay: 0.01
-  gradient_accumulation_steps: 2
+  learning_rate: 0.0001
+  weight_decay: 0.001
+  gradient_accumulation_steps: 1
   clip_grad_norm: true
   fedprox_mu: 1
   evaluate_during_training: false
@@ -109,8 +105,6 @@ train_args:
   momentum: 0.9
   max_grad_norm: 1
   ci: 0
-  # Warmup 步数
-  num_warmup_steps: 100
 
 validation_args:
   frequency_of_the_test: 5
