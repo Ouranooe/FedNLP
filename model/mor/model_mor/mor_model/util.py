@@ -15,7 +15,7 @@ class LinearRouter(nn.Module):
         self.router.weight.data.normal_(mean=0.0, std=config.initializer_range)
         
     def forward(self, x):
-        return self.router(x)
+        return self.router(x.to(self.router.weight.dtype))
     
     
 class MLPRouter(nn.Module):

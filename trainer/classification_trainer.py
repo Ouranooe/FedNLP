@@ -1,6 +1,7 @@
 import copy
 
 import torch
+from torch.cuda.amp import autocast, GradScaler
 
 from fedml.core import ClientTrainer
 from fedml.model.nlp.model_args import ClassificationArgs
@@ -52,6 +53,11 @@ class MyModelTrainer(ClientTrainer):
 
         model.to(device)
         model.train()
+        
+        # Initialize AMP components for fp16 training
+        use_amp = getattr(args, 'fp16', False)
+        scaler = GradScaler() if use_amp else None
+        
         tr_loss = 0
         # train and update
         criterion = torch.nn.CrossEntropyLoss().to(device)
@@ -67,20 +73,30 @@ class MyModelTrainer(ClientTrainer):
             for batch_idx, batch in enumerate(train_data):
                 x = batch[1].to(device)
                 labels = batch[4].to(device)
-                log_probs = model(x)
-                log_probs = log_probs[0]
-                loss = criterion(log_probs, labels)
-                if args.federated_optimizer == "FedProx":
-                    fed_prox_reg = 0.0
-                    mu = args.fedprox_mu
-                    for (p, g_p) in zip(model.parameters(), global_model.parameters()):
-                        fed_prox_reg += (mu / 2) * torch.norm((p - g_p.data)) ** 2
-                    loss += fed_prox_reg
+                
+                # Note: x (input_ids) should remain as LongTensor for embedding lookups
+                # Use autocast for automatic mixed precision if fp16 enabled
+                with autocast(enabled=use_amp):
+                    log_probs = model(x)
+                    log_probs = log_probs[0]
+                    loss = criterion(log_probs, labels)
+                    if args.federated_optimizer == "FedProx":
+                        fed_prox_reg = 0.0
+                        mu = args.fedprox_mu
+                        for (p, g_p) in zip(model.parameters(), global_model.parameters()):
+                            fed_prox_reg += (mu / 2) * torch.norm((p - g_p.data)) ** 2
+                        loss += fed_prox_reg
 
-                if args.gradient_accumulation_steps > 1:
-                    loss = loss / args.gradient_accumulation_steps
-                loss.backward()
-                tr_loss += loss.item()
+                    if args.gradient_accumulation_steps > 1:
+                        loss = loss / args.gradient_accumulation_steps
+
+                # Use scaler for fp16 backward pass if enabled
+                if use_amp:
+                    scaler.scale(loss).backward()
+                    tr_loss += loss.item()
+                else:
+                    loss.backward()
+                    tr_loss += loss.item()
                 # logging.info(
                 #    "Update Epoch: {} for Client Index: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
                 #        self.id,
@@ -93,10 +109,19 @@ class MyModelTrainer(ClientTrainer):
                 # )
                 if (batch_idx + 1) % args.gradient_accumulation_steps == 0:
                     if args.clip_grad_norm:
+                        if use_amp:
+                            # Unscale gradients before clipping when using AMP
+                            scaler.unscale_(optimizer)
                         torch.nn.utils.clip_grad_norm_(
                             model.parameters(), args.max_grad_norm
                         )
-                    optimizer.step()
+                    
+                    if use_amp:
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        optimizer.step()
+                        
                     scheduler.step()  # Update learning rate schedule
                     model.zero_grad()
                     batch_loss.append(tr_loss)
@@ -133,6 +158,7 @@ class MyModelTrainer(ClientTrainer):
         model.eval()
 
         metrics = {"test_correct": 0, "test_loss": 0, "test_total": 0}
+        use_amp = getattr(args, 'fp16', False)
 
         criterion = torch.nn.CrossEntropyLoss().to(device)
 
@@ -141,14 +167,16 @@ class MyModelTrainer(ClientTrainer):
                 if args.model_class == "transformer":
                     x = batch[1].to(device)
                     target = batch[4].to(device)
+                    # Note: x (input_ids) should remain as LongTensor for embedding lookups
                 else:
                     x, target = batch[0].to(device), batch[1].to(device)
-                # x = x.to(device)
-                # target = target.to(device)
-                pred = model(x)
-                if args.model_class == "transformer":
-                    pred = pred[0]
-                loss = criterion(pred, target)
+                
+                # Use autocast for inference as well when fp16 enabled
+                with autocast(enabled=use_amp):
+                    pred = model(x)
+                    if args.model_class == "transformer":
+                        pred = pred[0]
+                    loss = criterion(pred, target)
 
                 _, predicted = torch.max(pred, -1)
                 correct = predicted.eq(target).sum()

@@ -74,6 +74,11 @@ def create_model(args, output_dim=1):
         if getattr(args, 'mor_enable', False):
             model.setup_mor(mor_config)
             logging.info("MoR architecture setup complete")
+        
+        # Note: For fp16, we now use AMP (autocast + GradScaler) in trainer
+        # instead of model.half() for better stability and automatic dtype handling
+        if getattr(args, 'fp16', False):
+            logging.info("FP16 enabled - will use Automatic Mixed Precision (AMP)")
     else:
         model = model_class.from_pretrained(args.model, config=config)
     

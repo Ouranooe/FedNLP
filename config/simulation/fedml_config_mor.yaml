@@ -5,8 +5,8 @@ common_args:
 data_args:
   dataset: "20news"
   data_file_path: ~/fednlp_data/data_files/20news_data.h5
-  partition_file_path: ~/fednlp_data/partition_files/20news_partition_20.h5
-  partition_method: "niid_label_clients=20_alpha=0.5"
+  partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
+  partition_method: "niid_label_clients=6_alpha=0.5"
   reprocess_input_data: false
 
 
@@ -80,14 +80,14 @@ kv_sharing_args:
 train_args:
   federated_optimizer: "FedAvg"
   client_id_list: "[]"
-  client_num_in_total: 20
-  client_num_per_round: 1
-  comm_round: 1
+  client_num_in_total: 6
+  client_num_per_round: 3
+  comm_round: 2
   epochs: 1
-  batch_size: 16
+  batch_size: 2
   eval_batch_size: 8
-  max_seq_length: 128
-  fp16: False
+  max_seq_length: 64
+  fp16: True
   output_dir: "/home/ouranooe/output_dir"
   client_optimizer: AdamW
   server_optimizer: sgd
@@ -116,7 +116,7 @@ device_args:
   gpu_mapping_key: mapping_default
 
 comm_args:
-  backend: "MPI"
+  backend: "sp"
   is_mobile: 0
 
 tracking_args:

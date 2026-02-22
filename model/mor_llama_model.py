@@ -103,11 +103,30 @@ class MoRLlamaForSequenceClassification(nn.Module):
         )
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         
+        # Store torch dtype for consistency (default fp32, let AMP handle mixed precision)
+        self.torch_dtype = torch.float32
+        
         # Pooling type: 'last' uses last token, 'mean' uses mean pooling
         self.pooling_type = 'last'
         
         # Initialize classification head weights
         self._init_classifier_weights()
+    
+    def half(self):
+        """Convert model to half precision (fp16).
+        Note: With AMP, manual precision conversion is not recommended.
+        """
+        super().half()
+        self.torch_dtype = torch.float16
+        return self
+    
+    def float(self):
+        """Convert model to float precision (fp32).
+        Note: With AMP, manual precision conversion is not recommended.
+        """  
+        super().float()
+        self.torch_dtype = torch.float32
+        return self
     
     def _init_classifier_weights(self):
         """Initialize the classifier weights."""
@@ -278,6 +297,16 @@ class MoRLlamaForSequenceClassification(nn.Module):
         Returns:
             Tuple of (loss, logits, hidden_states, attentions)
         """
+        # Proper dtype handling with AMP (Automatic Mixed Precision):
+        # - input_ids: must remain LongTensor for embedding lookups
+        # - position_ids: must remain LongTensor for position embeddings  
+        # - attention_mask: should remain bool/long for mask operations
+        # - inputs_embeds: AMP will handle dtype automatically
+        # - Model parameters: AMP will handle mixed precision automatically
+        
+        # Only convert inputs_embeds if explicitly needed (rare case)
+        # Most of the time, AMP autocast will handle dtype conversion automatically
+        
         # Get outputs from MoR LLaMA model (access the inner model, not the causal LM)
         outputs = self.mor_llama.model(
             input_ids=input_ids,
@@ -400,8 +429,8 @@ def create_mor_config(args) -> DictConfig:
         # Training related configs needed by MoR
         'num_warmup_steps': getattr(args, 'num_warmup_steps', 100),
         'gradient_accumulation_steps': getattr(args, 'gradient_accumulation_steps', 1),
-        # Precision setting from FedML
-        'precision': 'fp16' if getattr(args, 'fp16', False) else 'fp32',
+        # Precision setting: Use fp32 as base since AMP will handle mixed precision automatically
+        'precision': 'fp32',  # Let AMP handle mixed precision instead of manual fp16 conversion
     }
     
     return OmegaConf.create(mor_cfg)
