@@ -1,0 +1,132 @@
+common_args:
+  training_type: "simulation"
+  random_seed: 0
+
+data_args:
+  dataset: "20news"
+  data_file_path: ~/fednlp_data/data_files/20news_data.h5
+  partition_file_path: ~/fednlp_data/partition_files/20news_partition_20.h5
+  partition_method: "niid_label_clients=20_alpha=0.5"
+  reprocess_input_data: false
+
+model_args:
+  # 使用 MoR LLaMA 模型
+  model_type: "mor_llama"
+  model_class: "transformer"
+  # 基础模型，可选: HuggingFaceTB/SmolLM-360M, meta-llama/Llama-2-7b-hf 等
+  model: "HuggingFaceTB/SmolLM-360M"
+  do_lower_case: false
+  formulation: "classification"
+
+# MoR (Mixture of Recursions) 配置
+mor_args:
+  # 是否启用 MoR 架构
+  mor_enable: true
+  # MoR 类型: 'expert' (专家选择路由) 或 'token' (token选择路由)
+  mor_type: "expert"
+  # 每个递归层的容量因子 (逗号分隔，数量=num_recursion)
+  mor_capacity: "1.0,1.0,1.0"
+  # 随机路由 (调试用)
+  mor_rand_router: false
+  # 路由器类型: 'linear', 'mlp'
+  mor_router_type: "linear"
+  # Z-loss 正则化
+  mor_z_loss: false
+  mor_z_coeff: 0.001
+  # 路由器 softmax 温度
+  mor_temp: 1.0
+  # MoR 辅助损失系数 (加到分类损失上)
+  mor_loss_coeff: 0.01
+
+  # Expert 路由配置 (当 mor_type="expert" 时生效)
+  mor_expert_cap_warmup_step: 0
+  mor_expert_router_func: "sigmoid"
+  mor_expert_alpha: 0.1
+  mor_expert_sampling: "aux_loss"
+  mor_expert_include_first: true
+  mor_expert_coeff: 0.001
+  mor_expert_gating: "weighted"
+
+  # Token 路由配置 (当 mor_type="token" 时生效)
+  mor_token_router_func: "sigmoid"
+  mor_token_alpha: 0.1
+  mor_token_balancing: "loss"
+  mor_token_coeff: 0.001
+  mor_token_u: 0.001
+  mor_token_gating: "weighted"
+  mor_token_bal_warmup_step: 0
+
+# 递归层共享配置
+recursive_args:
+  recursive_enable: true
+  recursive_base_depth: null
+  # 递归次数
+  recursive_num_recursion: 3
+  # 共享策略: 'cycle', 'middle_cycle', 'sequence', 'middle_sequence'
+  recursive_sharing: "middle_cycle"
+  # 是否共享 LayerNorm
+  recursive_ln_share: true
+  # 初始化策略: 'random', 'average'
+  recursive_initialization: "random"
+
+# KV-cache 共享配置 (可选)
+kv_sharing_args:
+  kv_sharing_enable: false
+  kv_sharing_base_depth: null
+  kv_sharing_num_recursion: null
+  kv_sharing_sharing: null
+
+train_args:
+  federated_optimizer: "FedAvg"
+  client_id_list: "[]"
+  client_num_in_total: 20
+  client_num_per_round: 1
+  comm_round: 1
+  epochs: 1
+  # MoR 模型建议使用较小的 batch_size
+  batch_size: 8
+  eval_batch_size: 4
+  # LLaMA 模型需要更大的 max_seq_length
+  max_seq_length: 512
+  fp16: True
+  output_dir: "/home/ouranooe/output_dir"
+  client_optimizer: AdamW
+  server_optimizer: sgd
+  server_momentum: 0.9
+  server_lr: 0.1
+  # MoR 模型建议使用较小的学习率
+  learning_rate: 0.00005
+  weight_decay: 0.01
+  gradient_accumulation_steps: 2
+  clip_grad_norm: true
+  fedprox_mu: 1
+  evaluate_during_training: false
+  evaluate_during_training_steps: 10
+  freeze_layers: ''
+  is_debug_mode: false
+  momentum: 0.9
+  max_grad_norm: 1
+  ci: 0
+  # Warmup 步数
+  num_warmup_steps: 100
+
+validation_args:
+  frequency_of_the_test: 5
+
+device_args:
+  worker_num: 1
+  using_gpu: true
+  gpu_mapping_file: config/simulation/gpu_mapping.yaml
+  gpu_mapping_key: mapping_default
+
+comm_args:
+  backend: "MPI"
+  is_mobile: 0
+
+tracking_args:
+  enable_wandb: false
+  wandb_entity: fedml-team
+  wandb_only_server: true
+  wandb_key: 404bae40078b1624faed523c4e9d25b40590e537
+  wandb_project: fednlp_mor
+  wandb_name: fedml_mor_classification

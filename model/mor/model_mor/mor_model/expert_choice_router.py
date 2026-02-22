@@ -10,9 +10,9 @@ from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.utils import logging
 
-from model.kv_caches.cache_utils import Cache, StaticCache, DynamicCache
-from model.mor_model.util import ROUTER_TYPES, MoRLayerOutputWithPast
-from model.base_model.modeling_llama import apply_rotary_pos_emb, eager_attention_forward, LlamaAttention
+from model_mor.kv_caches.cache_utils import Cache, StaticCache, DynamicCache
+from model_mor.mor_model.util import ROUTER_TYPES, MoRLayerOutputWithPast
+from model_mor.base_model.modeling_llama import apply_rotary_pos_emb, eager_attention_forward, LlamaAttention
 from util.misc import get_torch_dtype
 
 logger = logging.get_logger(__name__)

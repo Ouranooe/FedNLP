@@ -41,7 +41,7 @@ from model.base_model.modeling_llama import (
     repeat_kv,
     eager_attention_forward,
 )
-from model.kv_caches.cache_utils import Cache, StaticCache, DynamicCache, RecursiveDynamicCache
+from model_mor.kv_caches.cache_utils import Cache, StaticCache, DynamicCache, RecursiveDynamicCache
 
 logger = logging.get_logger(__name__)
 

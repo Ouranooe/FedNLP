@@ -7,6 +7,7 @@ from transformers import (
     BertTokenizer,
     DistilBertConfig,
     DistilBertTokenizer,
+    AutoTokenizer,
 )
 from fedml.model.nlp.model_args import *
 from fedml.data.fednlp.base.data_manager.base_data_manager import BaseDataManager
@@ -114,9 +115,19 @@ def load_synthetic_data(args):
         tokenizer_class = BertTokenizer
     elif args.model_type == "distilbert":
         tokenizer_class = DistilBertTokenizer
+    elif args.model_type == "mor_llama":
+        # Use AutoTokenizer for LLaMA-based models (SmolLM, LLaMA, etc.)
+        tokenizer_class = AutoTokenizer
+    else:
+        # Fallback to AutoTokenizer for unknown model types
+        tokenizer_class = AutoTokenizer
     tokenizer = tokenizer_class.from_pretrained(
         args.model, do_lower_case=args.do_lower_case
     )
+    # Handle tokenizers without pad_token (e.g., LLaMA) by setting it to eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
     preprocessor = TCPreprocessor(
         args=model_args, label_vocab=attributes["label_vocab"], tokenizer=tokenizer
     )

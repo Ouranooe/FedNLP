@@ -25,8 +25,8 @@ from transformers.utils import (
 from transformers import LlamaConfig
 from transformers.utils.deprecation import deprecate_kwarg
 
-from model.kv_caches.cache_utils import Cache, StaticCache, DynamicCache, RecursiveDynamicCache
-from model.base_model.modeling_llama import (
+from model_mor.kv_caches.cache_utils import Cache, StaticCache, DynamicCache, RecursiveDynamicCache
+from model_mor.base_model.modeling_llama import (
     LlamaModel, 
     LlamaForCausalLM, 
     KwargsForCausalLM,

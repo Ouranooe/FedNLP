@@ -7,10 +7,8 @@ from sklearn.metrics import (
     matthews_corrcoef,
 )
 from torch.optim import SGD
-from transformers import (
-    AdamW,
-    get_linear_schedule_with_warmup,
-)
+from torch.optim import AdamW
+from transformers.optimization import get_linear_schedule_with_warmup
 
 
 def compute_metrics(preds, labels, eval_examples=None):

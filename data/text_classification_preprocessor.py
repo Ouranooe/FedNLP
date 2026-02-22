@@ -151,7 +151,8 @@ class TLMPreprocessor(BasePreprocessor):
             ),
             # PAD on the left for XLNet
             pad_on_left=bool(args.model_type in ["xlnet"]),
-            pad_token=tokenizer.convert_tokens_to_ids([tokenizer.pad_token])[0],
+            # Handle tokenizers without pad_token (e.g., LLaMA) by falling back to eos_token
+            pad_token=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
             pad_token_segment_id=4 if args.model_type in ["xlnet"] else 0,
             process_count=process_count,
             multi_label=False,
