@@ -201,6 +201,11 @@ class MoRLlamaModel(LlamaModel):
         )
 
         hidden_states = inputs_embeds
+        
+        # Convert hidden_states to model dtype (fp16) to avoid dtype mismatch in router
+        target_dtype = next(self.layers.parameters()).dtype
+        if hidden_states.dtype != target_dtype:
+            hidden_states = hidden_states.to(target_dtype)
 
         # create position embeddings to be shared across the decoder layers
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
@@ -325,7 +330,7 @@ class MoRLlamaForCausalLM(LlamaForCausalLM):
         self.post_init()
     
     def transform_layer_to_mor_expert(self, cfg):
-        from model.mor_model.expert_choice_router import MoRLlamaDecoderLayer
+        from model.mor.model_mor.mor_model.expert_choice_router import MoRLlamaDecoderLayer
         
         capacity = [float(cap) for cap in cfg.mor.capacity.split(',')]
         # warmup_step for capacity_factor

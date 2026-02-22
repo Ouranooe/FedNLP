@@ -141,9 +141,11 @@ class TLMPreprocessor(BasePreprocessor):
             output_mode,
             # XLNet has a CLS token at the end
             cls_token_at_end=bool(args.model_type in ["xlnet"]),
-            cls_token=tokenizer.cls_token,
+            # Use bos_token as fallback for cls_token (for LLaMA-style tokenizers)
+            cls_token=tokenizer.cls_token if tokenizer.cls_token is not None else tokenizer.bos_token,
             cls_token_segment_id=2 if args.model_type in ["xlnet"] else 0,
-            sep_token=tokenizer.sep_token,
+            # Use eos_token as fallback for sep_token (for LLaMA-style tokenizers)
+            sep_token=tokenizer.sep_token if tokenizer.sep_token is not None else tokenizer.eos_token,
             # RoBERTa uses an extra separator b/w pairs of sentences,
             # cf. github.com/pytorch/fairseq/commit/1684e166e3da03f5b600dbb7855cb98ddfcd0805
             sep_token_extra=bool(

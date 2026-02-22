@@ -62,7 +62,7 @@ def create_model(args, output_dim=1):
             _mor_path = os.path.join(os.path.dirname(__file__), 'model', 'mor')
             if _mor_path not in sys.path:
                 sys.path.insert(0, _mor_path)
-            from model.mor_model.modeling_llama import MoRLlamaForCausalLM
+            from model.mor.model_mor.mor_model.modeling_llama import MoRLlamaForCausalLM
             try:
                 pretrained = MoRLlamaForCausalLM.from_pretrained(args.model)
                 model.mor_llama.load_state_dict(pretrained.state_dict(), strict=False)

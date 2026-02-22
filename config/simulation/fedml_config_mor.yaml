@@ -5,8 +5,10 @@ common_args:
 data_args:
   dataset: "20news"
   data_file_path: ~/fednlp_data/data_files/20news_data.h5
+  #partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
+  #partition_method: "uniform"
   partition_file_path: ~/fednlp_data/partition_files/20news_partition_20.h5
-  partition_method: "niid_label_clients=20_alpha=0.5"
+  partition_method: "niid_label_clients=4_alpha=0.5"
   reprocess_input_data: false
 
 model_args:
@@ -14,7 +16,7 @@ model_args:
   model_type: "mor_llama"
   model_class: "transformer"
   # 基础模型，可选: HuggingFaceTB/SmolLM-360M, meta-llama/Llama-2-7b-hf 等
-  model: "HuggingFaceTB/SmolLM-360M"
+  model: "HuggingFaceTB/SmolLM2-135M"
   do_lower_case: false
   formulation: "classification"
 
@@ -79,7 +81,7 @@ kv_sharing_args:
 train_args:
   federated_optimizer: "FedAvg"
   client_id_list: "[]"
-  client_num_in_total: 20
+  client_num_in_total: 4
   client_num_per_round: 1
   comm_round: 1
   epochs: 1
