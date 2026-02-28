@@ -3,16 +3,16 @@ common_args:
   random_seed: 0
 
 data_args:
-  dataset: "20news"
-  data_file_path: ~/fednlp_data/data_files/20news_data.h5
-  partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
-  partition_method: "niid_label_clients=6_alpha=0.5"
+  dataset: "sst_2"
+  data_file_path: ~/fednlp_data/data_files/sst_2_data.h5
+  partition_file_path: ~/fednlp_data/partition_files/sst_2_partition.h5
+  partition_method: "niid_label_clients=20_alpha=0.5"
   reprocess_input_data: false
 
 
 model_args:
   # 使用 MoR LLaMA 模型
-  model_type: "mor_llama"
+  model_type: "llama"
   model_class: "transformer"
   # 基础模型，可选: HuggingFaceTB/SmolLM-360M, meta-llama/Llama-2-7b-hf 等
   model: "HuggingFaceTB/SmolLM-135M"
@@ -25,8 +25,10 @@ mor_args:
   mor_enable: true
   # MoR 类型: 'expert' (专家选择路由) 或 'token' (token选择路由)
   mor_type: "expert"
+  # 跳过首次训练客户端的Router聚合 (首次训练的客户端不上传Router参数)
+  mor_skip_router_first_round: true
   # 每个递归层的容量因子 (逗号分隔，数量=num_recursion)
-  mor_capacity: "1.0,1.0,1.0"
+  mor_capacity: "1.0,0.8,0.6"
   # 随机路由 (调试用)
   mor_rand_router: false
   # 路由器类型: 'linear', 'mlp'
@@ -68,7 +70,7 @@ recursive_args:
   # 是否共享 LayerNorm
   recursive_ln_share: true
   # 初始化策略: 'random', 'average'
-  recursive_initialization: "random"
+  recursive_initialization: "average"
 
 # KV-cache 共享配置 (可选)
 kv_sharing_args:
@@ -80,11 +82,11 @@ kv_sharing_args:
 train_args:
   federated_optimizer: "FedAvg"
   client_id_list: "[]"
-  client_num_in_total: 6
-  client_num_per_round: 3
-  comm_round: 2
-  epochs: 1
-  batch_size: 2
+  client_num_in_total: 20
+  client_num_per_round: 6
+  comm_round: 6
+  epochs: 4
+  batch_size: 128
   eval_batch_size: 8
   max_seq_length: 64
   fp16: True

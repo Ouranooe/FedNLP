@@ -1,4 +1,5 @@
 import logging
+import re
 
 import numpy as np
 import torch
@@ -15,8 +16,114 @@ class ClassificationAggregator(ServerAggregator):
         return self.model.cpu().state_dict()
 
     def set_model_params(self, model_parameters):
+        """
+        设置模型参数，支持部分参数更新。
+        
+        当启用 mor_skip_router_first_round 时，首次训练的客户端不上传router参数，
+        因此需要使用 strict=False 来允许部分加载。
+        """
         logging.info("set_model_params")
-        self.model.load_state_dict(model_parameters)
+        self.model.load_state_dict(model_parameters, strict=False)
+
+    def set_model_size(self):
+        """
+        Override to calculate MoR theoretical model size.
+        For MoR models, shared parameters are only counted once.
+        """
+        try:
+            args = self.args
+            model = self.model
+            
+            if getattr(args, 'model_type', '') == "mor_llama" and hasattr(model, 'mor_llama'):
+                # For MoR models, calculate theoretical size based on sharing strategy
+                sharing_strategy = getattr(args, 'recursive_sharing', 'middle_cycle')
+                num_recursion = getattr(args, 'recursive_num_recursion', 3)
+                base_depth_arg = getattr(args, 'recursive_base_depth', None)
+                
+                num_hidden_layers = model.mor_llama.config.num_hidden_layers
+                
+                # Calculate base_depth following llama.py logic
+                if base_depth_arg is not None and num_recursion == 1:
+                    base_depth = base_depth_arg
+                else:
+                    if sharing_strategy in ["cycle", "sequence"]:
+                        base_depth = int(num_hidden_layers // num_recursion)
+                    elif sharing_strategy in ["middle_cycle", "middle_sequence"]:
+                        base_depth = int((num_hidden_layers - 2) // num_recursion)
+                    else:
+                        base_depth = num_hidden_layers
+                
+                # Calculate unique layer count
+                if sharing_strategy in ["middle_cycle", "middle_sequence"]:
+                    unique_layer_count = base_depth + 2
+                else:
+                    unique_layer_count = base_depth
+                
+                # Calculate theoretical parameter size
+                param_size = 0
+                
+                # Non-layer parameters
+                for name, param in model.named_parameters():
+                    if '.layers.' not in name:
+                        param_size += param.nelement() * param.element_size()
+                
+                # Unique layer indices
+                unique_layer_indices = set()
+                if sharing_strategy in ["middle_cycle", "middle_sequence"]:
+                    unique_layer_indices.add(0)
+                    unique_layer_indices.add(num_hidden_layers - 1)
+                    for i in range(base_depth):
+                        if sharing_strategy == "middle_cycle":
+                            unique_layer_indices.add(1 + i)
+                        else:
+                            unique_layer_indices.add(1 + i * num_recursion)
+                else:
+                    for i in range(base_depth):
+                        if sharing_strategy == "cycle":
+                            unique_layer_indices.add(i)
+                        else:
+                            unique_layer_indices.add(i * num_recursion)
+                
+                # Layer parameters: only count unique layers
+                for name, param in model.named_parameters():
+                    if '.layers.' in name:
+                        match = re.search(r'\.layers\.(\d+)\.', name)
+                        if match:
+                            layer_idx = int(match.group(1))
+                            if layer_idx in unique_layer_indices:
+                                param_size += param.nelement() * param.element_size()
+                
+                # Buffer size
+                buffer_size = 0
+                for buffer in model.buffers():
+                    buffer_size += buffer.nelement() * buffer.element_size()
+                
+                self.model_size = (param_size + buffer_size) / 1024 ** 2
+                logging.info(f'[Communication] MoR model theoretical size: {self.model_size:.2f} MB '
+                             f'(sharing={sharing_strategy}, base_depth={base_depth}, '
+                             f'unique_layers={unique_layer_count}/{num_hidden_layers})')
+            else:
+                # Default behavior for non-MoR models
+                param_size = 0
+                for param in model.parameters():
+                    param_size += param.nelement() * param.element_size()
+                buffer_size = 0
+                for buffer in model.buffers():
+                    buffer_size += buffer.nelement() * buffer.element_size()
+                
+                self.model_size = (param_size + buffer_size) / 1024 ** 2
+                logging.info(f'[Communication] Model size: {self.model_size:.2f} MB')
+        except Exception as e:
+            logging.warning(f'[Communication] Failed to calculate model size: {e}')
+            # Fallback to default calculation
+            param_size = 0
+            for param in self.model.parameters():
+                param_size += param.nelement() * param.element_size()
+            buffer_size = 0
+            for buffer in self.model.buffers():
+                buffer_size += buffer.nelement() * buffer.element_size()
+            self.model_size = (param_size + buffer_size) / 1024 ** 2
+            logging.info(f'[Communication] Model size (fallback): {self.model_size:.2f} MB')
 
     def test(self, test_data, device, args):
         pass

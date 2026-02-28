@@ -8,12 +8,78 @@ from fedml.model.nlp.model_args import ClassificationArgs
 from .text_classification_utils import *
 
 
+# 全局记录已训练过的客户端集合 (用于跳过首次训练的router聚合)
+_trained_clients = set()
+
+
+def get_trained_clients():
+    """获取已训练过的客户端集合"""
+    return _trained_clients
+
+
+def mark_client_trained(client_id):
+    """标记客户端已训练过"""
+    _trained_clients.add(client_id)
+
+
+def reset_trained_clients():
+    """重置训练记录 (用于新实验)"""
+    global _trained_clients
+    _trained_clients = set()
+
+
+def is_router_param(param_name):
+    """判断参数名是否是Router相关参数"""
+    router_keywords = ['mor_router', 'mlp_router', '.router.']
+    return any(keyword in param_name for keyword in router_keywords)
+
+
 class MyModelTrainer(ClientTrainer):
     def get_model_params(self):
-        return self.model.cpu().state_dict()
+        """
+        获取模型参数用于上传聚合。
+        
+        如果启用了 mor_skip_router_first_round，且当前客户端是第一次被训练，
+        则排除 Router 相关参数，不参与聚合。
+        """
+        state_dict = self.model.cpu().state_dict()
+        
+        # 检查是否启用跳过首次训练router聚合
+        args = getattr(self, 'args', None)
+        skip_router_first = getattr(args, 'mor_skip_router_first_round', False) if args else False
+        
+        if not skip_router_first:
+            return state_dict
+        
+        # 获取客户端ID
+        client_id = getattr(self, 'id', getattr(self, 'client_index', None))
+        
+        if client_id is None:
+            logging.warning("[MoR] Cannot determine client_id, returning full state_dict")
+            return state_dict
+        
+        # 检查是否是首次训练
+        is_first_round = client_id not in _trained_clients
+        
+        if is_first_round:
+            # 首次训练：排除Router参数
+            filtered_state_dict = {
+                k: v for k, v in state_dict.items() if not is_router_param(k)
+            }
+            excluded_count = len(state_dict) - len(filtered_state_dict)
+            logging.info(f"[MoR] Client {client_id} first training: excluding {excluded_count} router params from aggregation")
+            
+            # 标记客户端已训练过
+            mark_client_trained(client_id)
+            
+            return filtered_state_dict
+        else:
+            # 非首次训练：上传所有参数包括Router
+            logging.info(f"[MoR] Client {client_id} already trained before: uploading all params including router")
+            return state_dict
 
     def set_model_params(self, model_parameters):
-        self.model.load_state_dict(model_parameters)
+        self.model.load_state_dict(model_parameters, strict=False)
 
     def train(self, train_data, device, args, test_data=None):
         model_args = ClassificationArgs()
@@ -151,7 +217,9 @@ class MyModelTrainer(ClientTrainer):
                 )
 
     def test(self, test_data, device, args):
-        logging.info(f"----------test_on_the_client {args.rank} @ round {args.round_idx}--------")
+        rank = getattr(args, 'rank', 0)
+        round_idx = getattr(args, 'round_idx', 0)
+        logging.info(f"----------test_on_the_client {rank} @ round {round_idx}--------")
         model = self.model
 
         model.to(device)
@@ -184,4 +252,16 @@ class MyModelTrainer(ClientTrainer):
                 metrics["test_correct"] += correct.item()
                 metrics["test_loss"] += loss.item() * target.size(0)
                 metrics["test_total"] += target.size(0)
+        
+        # 计算准确率和平均损失
+        accuracy = metrics["test_correct"] / metrics["test_total"] if metrics["test_total"] > 0 else 0.0
+        avg_loss = metrics["test_loss"] / metrics["test_total"] if metrics["test_total"] > 0 else 0.0
+        
+        # 打印测试结果
+        logging.info(f"Client {rank} @ Round {round_idx} Test Results:")
+        logging.info(f"  Total samples: {metrics['test_total']}")
+        logging.info(f"  Correct: {metrics['test_correct']}")  
+        logging.info(f"  Accuracy: {accuracy:.4f}")
+        logging.info(f"  Average Loss: {avg_loss:.6f}")
+        
         return metrics
