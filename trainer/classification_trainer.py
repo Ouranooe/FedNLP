@@ -11,6 +11,14 @@ from .text_classification_utils import *
 # 全局记录已训练过的客户端集合 (用于跳过首次训练的router聚合)
 _trained_clients = set()
 
+# 全局记录客户端的epoch loss差值 (最后epoch - 第一epoch)
+# key: client_id, value: loss_delta (负值表示loss下降)
+_client_loss_deltas = {}
+
+# 全局记录客户端的 first_epoch_loss (用于计算相对比例)
+# key: client_id, value: first_epoch_loss
+_client_first_epoch_losses = {}
+
 
 def get_trained_clients():
     """获取已训练过的客户端集合"""
@@ -28,9 +36,96 @@ def reset_trained_clients():
     _trained_clients = set()
 
 
+def get_client_loss_deltas():
+    """获取所有客户端的loss差值字典"""
+    return _client_loss_deltas.copy()
+
+
+def set_client_loss_delta(client_id, loss_delta, first_epoch_loss=None):
+    """设置客户端的loss差值 (最后epoch loss - 第一epoch loss)"""
+    _client_loss_deltas[client_id] = loss_delta
+    if first_epoch_loss is not None:
+        _client_first_epoch_losses[client_id] = first_epoch_loss
+
+
+def get_client_first_epoch_losses():
+    """获取所有客户端的first_epoch_loss字典"""
+    return _client_first_epoch_losses.copy()
+
+
+def clear_client_loss_deltas():
+    """清空loss差值记录 (每轮聚合后调用)"""
+    global _client_loss_deltas, _client_first_epoch_losses
+    _client_loss_deltas = {}
+    _client_first_epoch_losses = {}
+
+
+def compute_router_weights(client_ids, weight_mode="absolute"):
+    """
+    根据客户端loss差值计算Router聚合权重。
+    
+    Args:
+        client_ids: 当前轮次参与训练的客户端ID列表
+        weight_mode: 权重计算模式
+            - "absolute": 按 loss_delta 绝对量 (loss_end - loss_start)
+            - "relative": 按相对比例 (loss_start - loss_end) / loss_start
+    
+    Returns:
+        dict: {client_id: weight} 归一化权重字典
+    """
+    import numpy as np
+    
+    # 获取参与本轮训练的客户端的loss差值
+    scores = []
+    valid_clients = []
+    
+    for cid in client_ids:
+        if cid in _client_loss_deltas:
+            delta = _client_loss_deltas[cid]
+            
+            if weight_mode == "relative":
+                # 相对比例: (loss_start - loss_end) / loss_start
+                # = -delta / loss_start (因为 delta = loss_end - loss_start)
+                first_loss = _client_first_epoch_losses.get(cid, None)
+                if first_loss is not None and first_loss > 1e-8:
+                    # 相对下降比例，正值表示下降
+                    relative_drop = -delta / first_loss
+                    scores.append(relative_drop)
+                    valid_clients.append(cid)
+                    logging.info(f"[MoR Weight] Client {cid}: relative_drop={relative_drop:.6f} (delta={delta:.6f}, first_loss={first_loss:.6f})")
+            else:
+                # 绝对量: 直接用 -delta (loss下降越多，-delta越大)
+                scores.append(-delta)
+                valid_clients.append(cid)
+    
+    if not scores:
+        # 无有效数据，返回均匀权重
+        return {cid: 1.0 / len(client_ids) for cid in client_ids}
+    
+    # 应用 softmax 归一化
+    scores = np.array(scores)
+    
+    # 防止数值溢出
+    scores = scores - np.max(scores)
+    exp_weights = np.exp(scores)
+    weights = exp_weights / np.sum(exp_weights)
+    
+    result = {cid: float(w) for cid, w in zip(valid_clients, weights)}
+    
+    # 对于没有loss记录的客户端，给予最小权重
+    for cid in client_ids:
+        if cid not in result:
+            result[cid] = 0.0
+    
+    return result
+
+
 def is_router_param(param_name):
     """判断参数名是否是Router相关参数"""
-    router_keywords = ['mor_router', 'mlp_router', '.router.']
+    # mor_router: 主路由器 (例如 mor_llama.model.layers.X.mor_router.router.weight)
+    # mlp_router: 辅助路由器 (用于 aux_router 采样策略)
+    # router_bias: 路由偏置 (用于 loss_free 平衡策略)
+    router_keywords = ['mor_router', 'mlp_router', 'router_bias']
     return any(keyword in param_name for keyword in router_keywords)
 
 
@@ -215,6 +310,29 @@ class MyModelTrainer(ClientTrainer):
                         self.id, epoch, metrics["test_correct"] / metrics["test_total"]
                     )
                 )
+        
+        # 记录epoch loss差值用于Router自适应加权聚合
+        # 检查配置 - 支持两种访问方式: args.mor_adaptive_router_weight 或 args.mor_args.mor_adaptive_router_weight
+        adaptive_router_weight = getattr(args, 'mor_adaptive_router_weight', None)
+        if adaptive_router_weight is None:
+            mor_args = getattr(args, 'mor_args', {})
+            if isinstance(mor_args, dict):
+                adaptive_router_weight = mor_args.get('mor_adaptive_router_weight', False)
+            else:
+                adaptive_router_weight = getattr(mor_args, 'mor_adaptive_router_weight', False)
+        
+        logging.info(f"[MoR Adaptive DEBUG] mor_adaptive_router_weight = {adaptive_router_weight}, epoch_loss count = {len(epoch_loss)}")
+        
+        if adaptive_router_weight and len(epoch_loss) >= 2:
+            first_epoch_loss = epoch_loss[0]
+            last_epoch_loss = epoch_loss[-1]
+            loss_delta = last_epoch_loss - first_epoch_loss  # 负值表示loss下降
+            client_id = getattr(self, 'id', getattr(self, 'client_index', 0))
+            set_client_loss_delta(client_id, loss_delta, first_epoch_loss=first_epoch_loss)
+            logging.info(
+                f"[MoR Adaptive] Client {client_id}: first_epoch_loss={first_epoch_loss:.6f}, "
+                f"last_epoch_loss={last_epoch_loss:.6f}, delta={loss_delta:.6f}"
+            )
 
     def test(self, test_data, device, args):
         rank = getattr(args, 'rank', 0)

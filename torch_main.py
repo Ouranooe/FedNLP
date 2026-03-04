@@ -210,6 +210,147 @@ if __name__ == "__main__":
     logging.info("FedML SP ModelTrainerCLS patched to use custom MyModelTrainer.")
     # --- PATCH END ---
     
+    # --- PATCH: force FedML SP to use our custom aggregator ---
+    try:
+        # FedML SP 模式使用 FedAvgAPI 类
+        from fedml.simulation.sp.fedavg import FedAvgAPI
+        from trainer.classification_trainer import (
+            get_client_loss_deltas,
+            compute_router_weights,
+            clear_client_loss_deltas,
+            is_router_param,
+        )
+        
+        # 保存原始的 _aggregate 方法
+        _orig_aggregate = FedAvgAPI._aggregate
+        
+        def _custom_aggregate(self, w_locals):
+            """
+            自定义聚合方法，使用 ClassificationAggregator 的逻辑。
+            替换 FedML 默认的 FedAvgAPI._aggregate 方法。
+            
+            Args:
+                w_locals: list of (sample_num, model_params) tuples
+            """
+            logging.info("=" * 60)
+            logging.info("[MoR Aggregator PATCH] Custom _aggregate() method CALLED")
+            logging.info(f"[MoR Aggregator PATCH] Received {len(w_locals)} client models")
+            logging.info("=" * 60)
+            
+            if len(w_locals) == 0:
+                logging.warning("[MoR Aggregator PATCH] No models to aggregate!")
+                return None
+            
+            # 检查是否启用自适应 Router 聚合权重
+            adaptive_router = getattr(args, 'mor_adaptive_router_weight', None)
+            if adaptive_router is None:
+                mor_args = getattr(args, 'mor_args', {})
+                if isinstance(mor_args, dict):
+                    adaptive_router = mor_args.get('mor_adaptive_router_weight', False)
+                else:
+                    adaptive_router = getattr(mor_args, 'mor_adaptive_router_weight', False)
+            
+            logging.info(f"[MoR Aggregator PATCH] mor_adaptive_router_weight = {adaptive_router}")
+            
+            if not adaptive_router:
+                # 使用默认 FedAvg 聚合
+                logging.info("[MoR Aggregator PATCH] Using default FedAvg aggregation")
+                return _fedavg_aggregate(w_locals)
+            else:
+                # 使用自适应 Router 聚合
+                loss_deltas = get_client_loss_deltas()
+                logging.info(f"[MoR Adaptive PATCH] Client loss deltas: {loss_deltas}")
+                
+                if not loss_deltas:
+                    logging.warning("[MoR Adaptive PATCH] No loss deltas, falling back to FedAvg")
+                    return _fedavg_aggregate(w_locals)
+                else:
+                    client_ids = list(loss_deltas.keys())
+                    
+                    # 读取权重计算模式配置
+                    # mor_adaptive_weight_mode: "absolute" (按loss绝对差值) 或 "relative" (按相对比例)
+                    weight_mode = getattr(args, 'mor_adaptive_weight_mode', None)
+                    if weight_mode is None:
+                        mor_args = getattr(args, 'mor_args', {})
+                        if isinstance(mor_args, dict):
+                            weight_mode = mor_args.get('mor_adaptive_weight_mode', 'absolute')
+                        else:
+                            weight_mode = getattr(mor_args, 'mor_adaptive_weight_mode', 'absolute')
+                    
+                    logging.info(f"[MoR Adaptive PATCH] weight_mode = {weight_mode}")
+                    router_weights = compute_router_weights(client_ids, weight_mode=weight_mode)
+                    
+                    logging.info("=" * 60)
+                    logging.info("[MoR Adaptive PATCH] ADAPTIVE ROUTER AGGREGATION ACTIVATED!")
+                    logging.info(f"[MoR Adaptive PATCH] Weight mode: {weight_mode}")
+                    for cid in client_ids:
+                        delta = loss_deltas.get(cid, 'N/A')
+                        weight = router_weights.get(cid, 0.0)
+                        logging.info(f"  Client {cid}: loss_delta={delta:.6f}, weight={weight:.4f}")
+                    logging.info("=" * 60)
+                    
+                    result = _adaptive_aggregate(w_locals, router_weights, client_ids)
+                    clear_client_loss_deltas()
+                    return result
+        
+        def _fedavg_aggregate(w_locals):
+            """标准 FedAvg 聚合"""
+            (_, first_model) = w_locals[0]
+            aggregated_params = {}
+            total_sample_num = sum([item[0] for item in w_locals])
+            
+            for param_name in first_model.keys():
+                agg_param = None
+                for sample_num, model_params in w_locals:
+                    if param_name not in model_params:
+                        continue
+                    param = model_params[param_name]
+                    weight = sample_num / total_sample_num
+                    if agg_param is None:
+                        agg_param = param * weight
+                    else:
+                        agg_param = agg_param + param * weight
+                if agg_param is not None:
+                    aggregated_params[param_name] = agg_param
+            
+            return aggregated_params
+        
+        def _adaptive_aggregate(w_locals, router_weights, client_ids):
+            """自适应 Router 权重聚合"""
+            (_, first_model) = w_locals[0]
+            aggregated_params = {}
+            total_sample_num = sum([item[0] for item in w_locals])
+            
+            # 统计 Router 参数
+            router_param_names = [p for p in first_model.keys() if is_router_param(p)]
+            logging.info(f"[MoR Adaptive PATCH] Found {len(router_param_names)} router params")
+            
+            for param_name in first_model.keys():
+                # 所有参数都用 router_weights 加权聚合
+                agg_param = None
+                for idx, (sample_num, model_params) in enumerate(w_locals):
+                    if param_name not in model_params:
+                        continue
+                    if idx < len(client_ids):
+                        weight = router_weights.get(client_ids[idx], 1.0 / len(w_locals))
+                    else:
+                        weight = 1.0 / len(w_locals)
+                    param = model_params[param_name]
+                    if agg_param is None:
+                        agg_param = param * weight
+                    else:
+                        agg_param = agg_param + param * weight
+                if agg_param is not None:
+                    aggregated_params[param_name] = agg_param
+            return aggregated_params
+        
+        # 替换 FedAvgAPI 的 _aggregate 方法
+        FedAvgAPI._aggregate = _custom_aggregate
+        logging.info("FedML SP FedAvgAPI._aggregate patched to use custom aggregator logic.")
+    except ImportError as e:
+        logging.warning(f"Could not patch FedML aggregator: {e}")
+    # --- AGGREGATOR PATCH END ---
+    
     # start training
     fedml_runner = FedMLRunner(args, device, dataset, model, trainer, aggregator)
     fedml_runner.run()

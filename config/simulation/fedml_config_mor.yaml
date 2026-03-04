@@ -27,6 +27,13 @@ mor_args:
   mor_type: "expert"
   # 跳过首次训练客户端的Router聚合 (首次训练的客户端不上传Router参数)
   mor_skip_router_first_round: true
+  # 自适应Router加权聚合：根据客户端epoch间loss下降幅度加权平均Router参数
+  # 启用后，loss下降越多的客户端对Router聚合贡献越大
+  mor_adaptive_router_weight: true
+  # 自适应权重计算模式:
+  #   - "absolute": 按loss绝对差值 (loss_start - loss_end)
+  #   - "relative": 按相对比例 (loss_start - loss_end) / loss_start
+  mor_adaptive_weight_mode: "absolute"
   # 每个递归层的容量因子 (逗号分隔，数量=num_recursion)
   mor_capacity: "1.0,0.8,0.6"
   # 随机路由 (调试用)

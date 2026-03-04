@@ -7,6 +7,13 @@ import wandb
 from fedml import mlops
 from fedml.core import ServerAggregator
 
+from .classification_trainer import (
+    is_router_param,
+    get_client_loss_deltas,
+    compute_router_weights,
+    clear_client_loss_deltas,
+)
+
 
 # Trainer for MoleculeNet. The evaluation metric is ROC-AUC
 
@@ -24,6 +31,175 @@ class ClassificationAggregator(ServerAggregator):
         """
         logging.info("set_model_params")
         self.model.load_state_dict(model_parameters, strict=False)
+    
+    def aggregate(self, model_list, sample_num_list):
+        """
+        聚合多个客户端的模型参数。
+        
+        如果启用了 mor_adaptive_router_weight，对于 Router 参数使用基于
+        epoch loss 差值的自适应加权平均，其他参数使用标准 FedAvg 加权平均。
+        
+        Args:
+            model_list: 客户端模型参数列表，每项为 (sample_num, model_state_dict)
+            sample_num_list: 样本数量列表 (可能未使用，取决于 model_list 格式)
+        """
+        logging.info("=" * 60)
+        logging.info("[MoR Aggregator] aggregate() method CALLED")
+        logging.info(f"[MoR Aggregator] model_list length: {len(model_list)}")
+        logging.info("=" * 60)
+        
+        args = self.args
+        # 支持两种配置访问方式
+        adaptive_router = getattr(args, 'mor_adaptive_router_weight', None)
+        if adaptive_router is None:
+            mor_args = getattr(args, 'mor_args', {})
+            if isinstance(mor_args, dict):
+                adaptive_router = mor_args.get('mor_adaptive_router_weight', False)
+            else:
+                adaptive_router = getattr(mor_args, 'mor_adaptive_router_weight', False)
+        
+        logging.info(f"[MoR Aggregator] mor_adaptive_router_weight = {adaptive_router}")
+        
+        if not adaptive_router:
+            # 使用默认的 FedAvg 聚合
+            logging.info("[MoR Aggregator] Using default FedAvg aggregation")
+            return self._default_aggregate(model_list)
+        
+        # 获取客户端 loss 差值
+        loss_deltas = get_client_loss_deltas()
+        logging.info(f"[MoR Adaptive] Client loss deltas: {loss_deltas}")
+        
+        # 如果没有 loss 差值记录，退化为默认 FedAvg
+        if not loss_deltas:
+            logging.warning("[MoR Adaptive] No loss deltas recorded, falling back to FedAvg")
+            return self._default_aggregate(model_list)
+        
+        # 计算 Router 聚合权重
+        client_ids = list(loss_deltas.keys())
+        router_weights = compute_router_weights(client_ids)
+        
+        # 打印详细的加权信息
+        logging.info("=" * 60)
+        logging.info("[MoR Adaptive] ADAPTIVE ROUTER AGGREGATION ACTIVATED!")
+        logging.info(f"[MoR Adaptive] Participating clients: {client_ids}")
+        for cid in client_ids:
+            delta = loss_deltas.get(cid, 'N/A')
+            weight = router_weights.get(cid, 0.0)
+            logging.info(f"  Client {cid}: loss_delta={delta:.6f}, weight={weight:.4f}")
+        logging.info("=" * 60)
+        
+        # 开始聚合
+        aggregated_params = {}
+        
+        # 获取所有参数名
+        first_model = model_list[0][1] if isinstance(model_list[0], tuple) else model_list[0]
+        param_names = list(first_model.keys())
+        
+        # 统计 Router 参数
+        router_param_names = [p for p in param_names if is_router_param(p)]
+        logging.info(f"[MoR Adaptive] Found {len(router_param_names)} router params: {router_param_names}")
+        
+        # 计算总样本数用于非 Router 参数的 FedAvg
+        total_sample_num = sum([item[0] if isinstance(item, tuple) else 1 for item in model_list])
+        
+        for param_name in param_names:
+            if is_router_param(param_name):
+                # Router 参数：使用基于 loss 差值的加权平均
+                aggregated_param = self._weighted_aggregate_router_param(
+                    model_list, param_name, router_weights, client_ids
+                )
+            else:
+                # 非 Router 参数：使用标准 FedAvg 加权
+                aggregated_param = self._fedavg_aggregate_param(
+                    model_list, param_name, total_sample_num
+                )
+            
+            if aggregated_param is not None:
+                aggregated_params[param_name] = aggregated_param
+        
+        # 清理本轮的 loss 差值记录
+        clear_client_loss_deltas()
+        
+        logging.info("[MoR Adaptive] Aggregation complete with adaptive router weights")
+        return aggregated_params
+    
+    def _default_aggregate(self, model_list):
+        """默认的 FedAvg 聚合"""
+        first_model = model_list[0][1] if isinstance(model_list[0], tuple) else model_list[0]
+        aggregated_params = {}
+        
+        total_sample_num = sum([item[0] if isinstance(item, tuple) else 1 for item in model_list])
+        
+        for param_name in first_model.keys():
+            aggregated_params[param_name] = self._fedavg_aggregate_param(
+                model_list, param_name, total_sample_num
+            )
+        
+        return aggregated_params
+    
+    def _fedavg_aggregate_param(self, model_list, param_name, total_sample_num):
+        """FedAvg 方式聚合单个参数"""
+        agg_param = None
+        for item in model_list:
+            if isinstance(item, tuple):
+                sample_num, model_params = item
+            else:
+                sample_num = 1
+                model_params = item
+            
+            if param_name not in model_params:
+                continue
+            
+            param = model_params[param_name]
+            weight = sample_num / total_sample_num
+            
+            if agg_param is None:
+                agg_param = param * weight
+            else:
+                agg_param = agg_param + param * weight
+        
+        return agg_param
+    
+    def _weighted_aggregate_router_param(self, model_list, param_name, router_weights, client_ids):
+        """
+        使用自适应权重聚合 Router 参数。
+        
+        注意：这里假设 model_list 的顺序与 client_ids 对应。
+        """
+        agg_param = None
+        valid_count = 0
+        
+        for idx, item in enumerate(model_list):
+            if isinstance(item, tuple):
+                _, model_params = item
+            else:
+                model_params = item
+            
+            if param_name not in model_params:
+                continue
+            
+            # 获取对应客户端的权重
+            if idx < len(client_ids):
+                client_id = client_ids[idx]
+                weight = router_weights.get(client_id, 0.0)
+            else:
+                # 如果没有对应的权重，使用均匀权重
+                weight = 1.0 / len(model_list)
+            
+            param = model_params[param_name]
+            
+            if agg_param is None:
+                agg_param = param * weight
+            else:
+                agg_param = agg_param + param * weight
+            
+            valid_count += 1
+        
+        # 如果部分客户端没有该参数，重新归一化
+        if valid_count > 0 and valid_count < len(model_list):
+            logging.info(f"[MoR Adaptive] Param {param_name}: only {valid_count}/{len(model_list)} clients have this param")
+        
+        return agg_param
 
     def set_model_size(self):
         """
