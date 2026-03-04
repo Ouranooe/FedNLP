@@ -115,7 +115,7 @@ def load_synthetic_data(args):
         tokenizer_class = BertTokenizer
     elif args.model_type == "distilbert":
         tokenizer_class = DistilBertTokenizer
-    elif args.model_type == "mor_llama":
+    elif args.model_type in ["mor_llama", "moe_llama"]:
         # Use AutoTokenizer for LLaMA-based models (SmolLM, LLaMA, etc.)
         tokenizer_class = AutoTokenizer
     else:

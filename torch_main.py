@@ -6,6 +6,7 @@ from fedml import FedMLRunner
 from model.bert_model import BertForSequenceClassification
 from model.distilbert_model import DistilBertForSequenceClassification
 from model.llama_model import LlamaForSequenceClassification
+from model.moe_llama_model import MoELlamaForSequenceClassification
 from model.mor_llama_model import MoRLlamaForSequenceClassification, create_mor_config
 from trainer.classification_aggregator import ClassificationAggregator
 from trainer.classification_trainer import MyModelTrainer as MyCLSTrainer
@@ -27,6 +28,7 @@ def create_model(args, output_dim=1):
             "distilbert": (DistilBertConfig, DistilBertForSequenceClassification),
             "llama": (LlamaConfig, LlamaForSequenceClassification),
             "mor_llama": (LlamaConfig, MoRLlamaForSequenceClassification),
+            "moe_llama": (LlamaConfig, MoELlamaForSequenceClassification),
             # "roberta": (RobertaConfig, RobertaForSequenceClassification, RobertaTokenizer),
             # "albert": (AlbertConfig, AlbertForSequenceClassification, AlbertTokenizer),
         },
@@ -92,7 +94,14 @@ def create_model(args, output_dim=1):
                 model.mor_llama.load_state_dict(pretrained.state_dict(), strict=False)
                 logging.info(f"Loaded pretrained weights from {args.model}")
             except Exception as e:
-                logging.warning(f"Could not load pretrained weights: {e}")
+                logging.warning(f"Could not load MoR pretrained weights, fallback to base LLaMA: {e}")
+                try:
+                    from transformers import LlamaForCausalLM
+                    pretrained = LlamaForCausalLM.from_pretrained(args.model)
+                    model.mor_llama.load_state_dict(pretrained.state_dict(), strict=False)
+                    logging.info(f"Loaded base LLaMA pretrained weights from {args.model}")
+                except Exception as e2:
+                    logging.warning(f"Could not load pretrained weights: {e2}")
         
         # Setup MoR architecture if enabled
         if getattr(args, 'mor_enable', False):
@@ -101,6 +110,35 @@ def create_model(args, output_dim=1):
         
         # Note: For fp16, we now use AMP (autocast + GradScaler) in trainer
         # instead of model.half() for better stability and automatic dtype handling
+        if getattr(args, 'fp16', False):
+            logging.info("FP16 enabled - will use Automatic Mixed Precision (AMP)")
+
+    elif args.model_type == "moe_llama":
+        # True MoE LLaMA model (independent LLaMA experts + sparse router)
+        num_experts = int(getattr(args, 'moe_num_experts', 4))
+        top_k = int(getattr(args, 'moe_top_k', 1))
+        router_temperature = float(getattr(args, 'moe_router_temperature', 1.0))
+        load_balance_loss_coef = float(getattr(args, 'moe_load_balance_loss_coef', 0.0))
+
+        model = model_class(
+            config=config,
+            num_labels=output_dim,
+            num_experts=num_experts,
+            top_k=top_k,
+            router_temperature=router_temperature,
+            load_balance_loss_coef=load_balance_loss_coef,
+        )
+
+        # Load pretrained LLaMA weights to every expert
+        if hasattr(args, 'model') and args.model:
+            try:
+                model.load_pretrained_experts(args.model)
+                logging.info(
+                    f"Loaded pretrained LLaMA weights into {num_experts} MoE experts from {args.model}"
+                )
+            except Exception as e:
+                logging.warning(f"Could not load pretrained weights for MoE experts: {e}")
+
         if getattr(args, 'fp16', False):
             logging.info("FP16 enabled - will use Automatic Mixed Precision (AMP)")
     else:

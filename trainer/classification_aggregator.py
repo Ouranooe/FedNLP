@@ -210,7 +210,7 @@ class ClassificationAggregator(ServerAggregator):
             args = self.args
             model = self.model
             
-            if getattr(args, 'model_type', '') == "mor_llama" and hasattr(model, 'mor_llama'):
+            if getattr(args, 'model_type', '') in ["mor_llama", "moe_llama"] and hasattr(model, 'mor_llama'):
                 # For MoR models, calculate theoretical size based on sharing strategy
                 sharing_strategy = getattr(args, 'recursive_sharing', 'middle_cycle')
                 num_recursion = getattr(args, 'recursive_num_recursion', 3)
