@@ -258,6 +258,36 @@ if __name__ == "__main__":
             clear_client_loss_deltas,
             is_router_param,
         )
+
+        def _get_mor_config_value(key, default=None):
+            value = getattr(args, key, None)
+            if value is not None:
+                return value
+            mor_args = getattr(args, 'mor_args', {})
+            if isinstance(mor_args, dict):
+                return mor_args.get(key, default)
+            return getattr(mor_args, key, default)
+
+        def _resolve_router_tau_for_round():
+            tau_const = float(_get_mor_config_value('mor_router_weight_tau', 1.0))
+            tau_warmup = bool(_get_mor_config_value('mor_router_weight_tau_warmup', False))
+            if not tau_warmup:
+                return max(tau_const, 1e-8), "constant"
+
+            tau_start = float(_get_mor_config_value('mor_router_weight_tau_warmup_start', 2.0))
+            tau_end = float(_get_mor_config_value('mor_router_weight_tau_warmup_end', tau_const))
+            warmup_rounds = int(_get_mor_config_value('mor_router_weight_tau_warmup_rounds', 10))
+            round_idx = int(getattr(args, 'round_idx', 0))
+
+            if warmup_rounds <= 0:
+                tau = tau_end
+            else:
+                progress = min(max(round_idx, 0), warmup_rounds) / float(warmup_rounds)
+                tau = tau_start + (tau_end - tau_start) * progress
+
+            return max(float(tau), 1e-8), (
+                f"warmup(start={tau_start}, end={tau_end}, rounds={warmup_rounds}, round_idx={round_idx})"
+            )
         
         # 保存原始的 _aggregate 方法
         _orig_aggregate = FedAvgAPI._aggregate
@@ -280,13 +310,7 @@ if __name__ == "__main__":
                 return None
             
             # 检查是否启用自适应 Router 聚合权重
-            adaptive_router = getattr(args, 'mor_adaptive_router_weight', None)
-            if adaptive_router is None:
-                mor_args = getattr(args, 'mor_args', {})
-                if isinstance(mor_args, dict):
-                    adaptive_router = mor_args.get('mor_adaptive_router_weight', False)
-                else:
-                    adaptive_router = getattr(mor_args, 'mor_adaptive_router_weight', False)
+            adaptive_router = bool(_get_mor_config_value('mor_adaptive_router_weight', False))
             
             logging.info(f"[MoR Aggregator PATCH] mor_adaptive_router_weight = {adaptive_router}")
             
@@ -306,21 +330,24 @@ if __name__ == "__main__":
                     client_ids = list(loss_deltas.keys())
                     
                     # 读取权重计算模式配置
-                    # mor_adaptive_weight_mode: "absolute" (按loss绝对差值) 或 "relative" (按相对比例)
-                    weight_mode = getattr(args, 'mor_adaptive_weight_mode', None)
+                    # mor_router_weight_mode: "absolute" (按loss绝对差值) 或 "relative" (按相对比例)
+                    # 兼容旧键 mor_adaptive_weight_mode
+                    weight_mode = _get_mor_config_value('mor_router_weight_mode', None)
                     if weight_mode is None:
-                        mor_args = getattr(args, 'mor_args', {})
-                        if isinstance(mor_args, dict):
-                            weight_mode = mor_args.get('mor_adaptive_weight_mode', 'absolute')
-                        else:
-                            weight_mode = getattr(mor_args, 'mor_adaptive_weight_mode', 'absolute')
-                    
-                    logging.info(f"[MoR Adaptive PATCH] weight_mode = {weight_mode}")
-                    router_weights = compute_router_weights(client_ids, weight_mode=weight_mode)
+                        weight_mode = _get_mor_config_value('mor_adaptive_weight_mode', 'absolute')
+
+                    router_tau, tau_source = _resolve_router_tau_for_round()
+
+                    logging.info(f"[MoR Adaptive PATCH] weight_mode = {weight_mode}, tau={router_tau:.6f} ({tau_source})")
+                    router_weights = compute_router_weights(
+                        client_ids,
+                        weight_mode=weight_mode,
+                        tau=router_tau,
+                    )
                     
                     logging.info("=" * 60)
                     logging.info("[MoR Adaptive PATCH] ADAPTIVE ROUTER AGGREGATION ACTIVATED!")
-                    logging.info(f"[MoR Adaptive PATCH] Weight mode: {weight_mode}")
+                    logging.info(f"[MoR Adaptive PATCH] Weight mode: {weight_mode}, tau={router_tau:.6f}")
                     for cid in client_ids:
                         delta = loss_deltas.get(cid, 'N/A')
                         weight = router_weights.get(cid, 0.0)

@@ -21,7 +21,7 @@ add_bos_token: false
 global_shuffling: false
 local_shuffling: false
 tokenizer: smollm
-model: smollm
+model: "HuggingFaceTB/SmolLM-135M"
 model_name_or_path: HuggingFaceTB/SmolLM-360M
 model_config: null
 attn_implementation: flash_attention_2

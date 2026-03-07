@@ -60,7 +60,7 @@ def clear_client_loss_deltas():
     _client_first_epoch_losses = {}
 
 
-def compute_router_weights(client_ids, weight_mode="absolute"):
+def compute_router_weights(client_ids, weight_mode="absolute", tau=1.0):
     """
     根据客户端loss差值计算Router聚合权重。
     
@@ -69,6 +69,7 @@ def compute_router_weights(client_ids, weight_mode="absolute"):
         weight_mode: 权重计算模式
             - "absolute": 按 loss_delta 绝对量 (loss_end - loss_start)
             - "relative": 按相对比例 (loss_start - loss_end) / loss_start
+        tau: softmax 温度参数 (tau > 0)
     
     Returns:
         dict: {client_id: weight} 归一化权重字典
@@ -104,6 +105,17 @@ def compute_router_weights(client_ids, weight_mode="absolute"):
     
     # 应用 softmax 归一化
     scores = np.array(scores)
+
+    # 温度缩放，tau 越小分布越尖锐，tau 越大分布越平滑
+    try:
+        tau = float(tau)
+    except (TypeError, ValueError):
+        logging.warning(f"[MoR Weight] Invalid tau={tau}, fallback to 1.0")
+        tau = 1.0
+    if tau <= 0:
+        logging.warning(f"[MoR Weight] Non-positive tau={tau}, clamp to 1e-8")
+        tau = 1e-8
+    scores = scores / tau
     
     # 防止数值溢出
     scores = scores - np.max(scores)

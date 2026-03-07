@@ -15,6 +15,44 @@ from .classification_trainer import (
 )
 
 
+def _get_mor_config(args, key, default=None):
+    """Read config from args.<key> first, then args.mor_args.<key>."""
+    value = getattr(args, key, None)
+    if value is not None:
+        return value
+
+    mor_args = getattr(args, 'mor_args', {})
+    if isinstance(mor_args, dict):
+        return mor_args.get(key, default)
+
+    return getattr(mor_args, key, default)
+
+
+def _resolve_router_tau(args):
+    """Resolve router softmax temperature from constant config or warmup config."""
+    tau_const = float(_get_mor_config(args, 'mor_router_weight_tau', 1.0))
+    tau_warmup = bool(_get_mor_config(args, 'mor_router_weight_tau_warmup', False))
+
+    if not tau_warmup:
+        return max(tau_const, 1e-8), "constant"
+
+    tau_start = float(_get_mor_config(args, 'mor_router_weight_tau_warmup_start', 2.0))
+    tau_end = float(_get_mor_config(args, 'mor_router_weight_tau_warmup_end', tau_const))
+    warmup_rounds = int(_get_mor_config(args, 'mor_router_weight_tau_warmup_rounds', 10))
+    round_idx = int(getattr(args, 'round_idx', 0))
+
+    if warmup_rounds <= 0:
+        tau = tau_end
+    else:
+        # Linear warmup/interpolation on round index, clamped into [0, warmup_rounds].
+        progress = min(max(round_idx, 0), warmup_rounds) / float(warmup_rounds)
+        tau = tau_start + (tau_end - tau_start) * progress
+
+    return max(float(tau), 1e-8), (
+        f"warmup(start={tau_start}, end={tau_end}, rounds={warmup_rounds}, round_idx={round_idx})"
+    )
+
+
 # Trainer for MoleculeNet. The evaluation metric is ROC-AUC
 
 
@@ -49,14 +87,7 @@ class ClassificationAggregator(ServerAggregator):
         logging.info("=" * 60)
         
         args = self.args
-        # 支持两种配置访问方式
-        adaptive_router = getattr(args, 'mor_adaptive_router_weight', None)
-        if adaptive_router is None:
-            mor_args = getattr(args, 'mor_args', {})
-            if isinstance(mor_args, dict):
-                adaptive_router = mor_args.get('mor_adaptive_router_weight', False)
-            else:
-                adaptive_router = getattr(mor_args, 'mor_adaptive_router_weight', False)
+        adaptive_router = bool(_get_mor_config(args, 'mor_adaptive_router_weight', False))
         
         logging.info(f"[MoR Aggregator] mor_adaptive_router_weight = {adaptive_router}")
         
@@ -75,13 +106,22 @@ class ClassificationAggregator(ServerAggregator):
             return self._default_aggregate(model_list)
         
         # 计算 Router 聚合权重
+        router_weight_mode = _get_mor_config(args, 'mor_router_weight_mode', 'absolute')
+        router_tau, tau_source = _resolve_router_tau(args)
         client_ids = list(loss_deltas.keys())
-        router_weights = compute_router_weights(client_ids)
+        router_weights = compute_router_weights(
+            client_ids,
+            weight_mode=router_weight_mode,
+            tau=router_tau,
+        )
         
         # 打印详细的加权信息
         logging.info("=" * 60)
         logging.info("[MoR Adaptive] ADAPTIVE ROUTER AGGREGATION ACTIVATED!")
         logging.info(f"[MoR Adaptive] Participating clients: {client_ids}")
+        logging.info(
+            f"[MoR Adaptive] weight_mode={router_weight_mode}, tau={router_tau:.6f} ({tau_source})"
+        )
         for cid in client_ids:
             delta = loss_deltas.get(cid, 'N/A')
             weight = router_weights.get(cid, 0.0)
@@ -210,7 +250,7 @@ class ClassificationAggregator(ServerAggregator):
             args = self.args
             model = self.model
             
-            if getattr(args, 'model_type', '') in ["mor_llama", "moe_llama"] and hasattr(model, 'mor_llama'):
+            if getattr(args, 'model_type', '') == "mor_llama" and hasattr(model, 'mor_llama'):
                 # For MoR models, calculate theoretical size based on sharing strategy
                 sharing_strategy = getattr(args, 'recursive_sharing', 'middle_cycle')
                 num_recursion = getattr(args, 'recursive_num_recursion', 3)

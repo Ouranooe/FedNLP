@@ -12,7 +12,7 @@ data_args:
 model_args:
   model_type: "distilbert"
   model_class: "transformer"
-  model: "bert-base-uncased"
+  model: "HuggingFaceTB/SmolLM-135M"
   do_lower_case: true
   formulation: "classification"
 
@@ -43,6 +43,14 @@ train_args:
   is_debug_mode: false
   momentum: 0.9
   max_grad_norm: 1
+  # MoR adaptive router aggregation settings
+  mor_adaptive_router_weight: false
+  mor_router_weight_mode: "absolute"  # absolute | relative
+  mor_router_weight_tau: 1.0
+  mor_router_weight_tau_warmup: false
+  mor_router_weight_tau_warmup_start: 2.0
+  mor_router_weight_tau_warmup_end: 1.0
+  mor_router_weight_tau_warmup_rounds: 10
   ci: 0
 
 validation_args:

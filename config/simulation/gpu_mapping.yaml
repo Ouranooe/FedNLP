@@ -14,7 +14,7 @@
 
 # this is used for 10 clients and 1 server training within a single machine (single GPU)
 mapping_default:
-  TURTLELaptop: [1]
+  TURTLELaptop: [0]
 
 mapping_config6_3:
   TURTLELaptop: [7]

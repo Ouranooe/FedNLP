@@ -13,14 +13,14 @@ data_args:
   data_file_path: ~/fednlp_data/data_files/20news_data.h5
   #partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
   partition_method: "noniid-labeldir"
-  partition_alpha: 0.1   # 越小越 Non-IID
+  partition_alpha: 0.1   # 越小�?Non-IID
   global_model_file_path: "/home/ubuntu/FedML/python/app/model_cache_dir/"
   model_file_cache_folder: "/home/ubuntu/FedML/python/app/model_cache_dir/global_model.pt"
 
 model_args:
   model_type: "distilbert" # bert; distilbert
   model_class: "transformer"
-  model: "distilbert-base-uncased" # bert-base-uncased; distilbert-base-uncased;
+  model: "HuggingFaceTB/SmolLM-135M"
   do_lower_case: true
   formulation: "classification"
 
@@ -54,6 +54,14 @@ train_args:
   is_debug_mode: false
   momentum: 0.9
   max_grad_norm: 1
+  # MoR adaptive router aggregation settings
+  mor_adaptive_router_weight: false
+  mor_router_weight_mode: "absolute"  # absolute | relative
+  mor_router_weight_tau: 1.0
+  mor_router_weight_tau_warmup: false
+  mor_router_weight_tau_warmup_start: 2.0
+  mor_router_weight_tau_warmup_end: 1.0
+  mor_router_weight_tau_warmup_rounds: 10
   ci: 0
 
 validation_args:

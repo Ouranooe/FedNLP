@@ -10,36 +10,30 @@ data_args:
   reprocess_input_data: false
 
 model_args:
-  # 真正�?MoE-LLaMA（独�?个LLaMA专家�?
   model_type: "moe_llama"
   model_class: "transformer"
-  # LLaMA基座（可替换为你本地/私有HF模型�?
   model: "HuggingFaceTB/SmolLM-135M"
   do_lower_case: false
   formulation: "classification"
 
 moe_args:
-  # 专家数（每个专家是一个独�?LLaMA�?
   moe_num_experts: 4
-  # 稀疏激�?top-k
   moe_top_k: 1
-  # Router softmax 温度
   moe_router_temperature: 1.0
-  # 负载均衡辅助损失系数
   moe_load_balance_loss_coef: 0.01
 
 train_args:
   federated_optimizer: "FedAvg"
   client_id_list: "[]"
   client_num_in_total: 20
-  client_num_per_round: 4
-  comm_round: 3
-  epochs: 1
+  client_num_per_round: 8
+  comm_round: 100
+  epochs: 2
   batch_size: 8
   eval_batch_size: 8
   max_seq_length: 64
   fp16: true
-  output_dir: "./outputs/moe_llama_4expert"
+  output_dir: "./outputs/compare_moe_24g"
   client_optimizer: AdamW
   server_optimizer: sgd
   server_momentum: 0.9
@@ -58,7 +52,7 @@ train_args:
   ci: 0
 
 validation_args:
-  frequency_of_the_test: 1
+  frequency_of_the_test: 5
 
 device_args:
   worker_num: 1
@@ -75,5 +69,5 @@ tracking_args:
   wandb_entity: fedml-team
   wandb_only_server: true
   wandb_key: 404bae40078b1624faed523c4e9d25b40590e537
-  wandb_project: fednlp_moe
-  wandb_name: fedml_moe_llama_4expert
+  wandb_project: fednlp_compare_24g
+  wandb_name: compare_moe_24g
