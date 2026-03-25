@@ -6,7 +6,7 @@ data_args:
   dataset: "sst_2"
   data_file_path: ~/fednlp_data/data_files/sst_2_data.h5
   partition_file_path: ~/fednlp_data/partition_files/sst_2_partition.h5
-  partition_method: "niid_label_clients=20_alpha=0.5"
+  partition_method: "niid_label_clients=20_alpha=1"
   reprocess_input_data: false
 
 model_args:
@@ -19,7 +19,7 @@ model_args:
 mor_args:
   mor_enable: true
   mor_type: "expert"
-  mor_skip_router_first_round: true
+  mor_skip_router_first_round: false
   mor_adaptive_router_weight: false
   mor_router_weight_mode: "absolute"
   mor_router_weight_tau: 1.0
@@ -31,20 +31,20 @@ mor_args:
   mor_rand_router: false
   mor_router_type: "linear"
   mor_z_loss: false
-  mor_z_coeff: 0.001
+  mor_z_coeff: 0
   mor_temp: 1.0
-  mor_loss_coeff: 0.01
+  mor_loss_coeff: 0.0001
   mor_expert_cap_warmup_step: 0
   mor_expert_router_func: "sigmoid"
   mor_expert_alpha: 0.1
   mor_expert_sampling: "aux_loss"
   mor_expert_include_first: true
-  mor_expert_coeff: 0.001
-  mor_expert_gating: "weighted"
+  mor_expert_coeff: 0.0001
+  mor_expert_gating: "unweighted"
   mor_token_router_func: "sigmoid"
   mor_token_alpha: 0.1
   mor_token_balancing: "loss"
-  mor_token_coeff: 0.001
+  mor_token_coeff: 0
   mor_token_u: 0.001
   mor_token_gating: "weighted"
   mor_token_bal_warmup_step: 0
@@ -54,7 +54,7 @@ recursive_args:
   recursive_base_depth: null
   recursive_num_recursion: 3
   recursive_sharing: "middle_cycle"
-  recursive_ln_share: true
+  recursive_ln_share: false
   recursive_initialization: "average"
 
 kv_sharing_args:
@@ -68,9 +68,9 @@ train_args:
   client_id_list: "[]"
   client_num_in_total: 20
   client_num_per_round: 8
-  comm_round: 100
+  comm_round: 200
   epochs: 2
-  batch_size: 8
+  batch_size: 64
   eval_batch_size: 8
   max_seq_length: 64
   fp16: true
@@ -78,12 +78,12 @@ train_args:
   client_optimizer: AdamW
   server_optimizer: sgd
   server_momentum: 0.9
-  server_lr: 0.1
-  learning_rate: 0.0001
+  server_lr: 1
+  learning_rate: 0.00005
   weight_decay: 0.001
   gradient_accumulation_steps: 1
   clip_grad_norm: true
-  fedprox_mu: 1
+  fedprox_mu: 0
   evaluate_during_training: false
   evaluate_during_training_steps: 10
   freeze_layers: ''

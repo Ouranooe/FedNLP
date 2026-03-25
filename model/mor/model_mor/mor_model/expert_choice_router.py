@@ -170,6 +170,52 @@ class MoRLlamaDecoderLayer(nn.Module):
         else:
             router_weights = _router_weights = torch.rand(bs, x.shape[1], 1, device=x.device, dtype=x.dtype)
             router_probs = router_weights * self.cfg.mor.expert.get("alpha", 0.1)
+
+        # =====================================================================
+        # Keepalive logic for the true last non-padding token (robust to reduced
+        # sequences and causal mask shapes).
+        # =====================================================================
+        if attention_mask is not None:
+            if attention_mask.dim() == 4:
+                # Recover valid-token mask from causal attention mask.
+                valid_mask_1d = (attention_mask.max(dim=2).values.squeeze(1) > -1.0)
+                original_last_idx = valid_mask_1d.sum(dim=1).long() - 1
+            elif attention_mask.dim() == 2:
+                original_last_idx = attention_mask.sum(dim=1).long() - 1
+            else:
+                original_last_idx = torch.full(
+                    (bs,),
+                    seq_len - 1,
+                    device=router_probs.device,
+                    dtype=torch.long,
+                )
+        else:
+            original_last_idx = torch.full(
+                (bs,),
+                seq_len - 1,
+                device=router_probs.device,
+                dtype=torch.long,
+            )
+
+        original_last_idx = torch.clamp(original_last_idx, min=0, max=seq_len - 1)
+        batch_indices = torch.arange(bs, device=router_probs.device)
+
+        # Finite dominant score: guarantees selection without introducing inf/NaN.
+        keepalive_scores = torch.amax(router_probs[:, :, 0], dim=1) + router_probs.new_tensor(1.0)
+        router_probs = router_probs.clone()
+
+        if prev_selected_tokens is not None:
+            # Map absolute original indices onto the current reduced sequence.
+            reduced_indices = prev_selected_tokens.squeeze(-1)
+            matches = reduced_indices == original_last_idx.unsqueeze(1)
+            has_match = matches.any(dim=1)
+            if has_match.any():
+                relative_idx = matches.float().argmax(dim=1)
+                matched_batch = torch.nonzero(has_match, as_tuple=False).squeeze(-1)
+                router_probs[matched_batch, relative_idx[matched_batch], 0] = keepalive_scores[matched_batch]
+        else:
+            router_probs[batch_indices, original_last_idx, 0] = keepalive_scores
+        # =====================================================================
             
         weights, selected_tokens = torch.topk(router_probs, top_k, dim=1, sorted=False) # [bs, k, 1]
         # IMPORTANT: need to sort indices to keep causal order for those tokens that are processed in a block

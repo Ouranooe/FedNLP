@@ -6,7 +6,7 @@ data_args:
   dataset: "sst_2"
   data_file_path: ~/fednlp_data/data_files/sst_2_data.h5
   partition_file_path: ~/fednlp_data/partition_files/sst_2_partition.h5
-  partition_method: "niid_label_clients=20_alpha=0.5"
+  partition_method: "niid_label_clients=20_alpha=1"
   reprocess_input_data: false
 
 model_args:
@@ -27,9 +27,9 @@ train_args:
   client_id_list: "[]"
   client_num_in_total: 20
   client_num_per_round: 8
-  comm_round: 100
+  comm_round: 200
   epochs: 2
-  batch_size: 8
+  batch_size: 20
   eval_batch_size: 8
   max_seq_length: 64
   fp16: true
@@ -37,12 +37,12 @@ train_args:
   client_optimizer: AdamW
   server_optimizer: sgd
   server_momentum: 0.9
-  server_lr: 0.1
-  learning_rate: 0.0001
+  server_lr: 1
+  learning_rate: 0.00001
   weight_decay: 0.001
   gradient_accumulation_steps: 1
   clip_grad_norm: true
-  fedprox_mu: 1
+  fedprox_mu: 0
   evaluate_during_training: false
   evaluate_during_training_steps: 10
   freeze_layers: ''

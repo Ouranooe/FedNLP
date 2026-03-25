@@ -6,22 +6,22 @@ data_args:
   dataset: "sst_2"
   data_file_path: ~/fednlp_data/data_files/sst_2_data.h5
   partition_file_path: ~/fednlp_data/partition_files/sst_2_partition.h5
-  partition_method: "niid_label_clients=20_alpha=0.5"
+  partition_method: "niid_label_clients=20_alpha=1"
   reprocess_input_data: false
 
 model_args:
-  # 真正�?MoE-LLaMA（独�?个LLaMA专家�?
+  # 真正�?MoE-LLaMA（独�?个LLaMA专家�?
   model_type: "moe_llama"
   model_class: "transformer"
-  # LLaMA基座（可替换为你本地/私有HF模型�?
+  # LLaMA基座（可替换为你本地/私有HF模型�?
   model: "HuggingFaceTB/SmolLM-135M"
   do_lower_case: false
   formulation: "classification"
 
 moe_args:
-  # 专家数（每个专家是一个独�?LLaMA�?
+  # 专家数（每个专家是一个独�?LLaMA�?
   moe_num_experts: 4
-  # 稀疏激�?top-k
+  # 稀疏激�?top-k
   moe_top_k: 1
   # Router softmax 温度
   moe_router_temperature: 1.0
@@ -48,7 +48,7 @@ train_args:
   weight_decay: 0.001
   gradient_accumulation_steps: 1
   clip_grad_norm: true
-  fedprox_mu: 1
+  fedprox_mu: 0
   evaluate_during_training: false
   evaluate_during_training_steps: 10
   freeze_layers: ''

@@ -357,10 +357,11 @@ class ClassificationAggregator(ServerAggregator):
         with torch.no_grad():
             for batch_idx, batch in enumerate(test_data):
                 x = batch[1].to(device)
+                attention_mask = batch[2].to(device)
                 target = batch[4].to(device)
                 # x = x.to(device)
                 # target = target.to(device)
-                pred = model(x)
+                pred = model(x, attention_mask=attention_mask)
                 pred = pred[0]
                 loss = criterion(pred, target)
 

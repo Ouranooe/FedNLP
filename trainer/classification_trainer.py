@@ -1,5 +1,3 @@
-import copy
-
 import torch
 from torch.cuda.amp import autocast, GradScaler
 
@@ -226,6 +224,9 @@ class MyModelTrainer(ClientTrainer):
 
         model.to(device)
         model.train()
+
+        # Snapshot current global model parameters for manual proximal regularization.
+        global_params = [p.detach().clone() for p in model.parameters()]
         
         # Initialize AMP components for fp16 training
         use_amp = getattr(args, 'fp16', False)
@@ -238,27 +239,27 @@ class MyModelTrainer(ClientTrainer):
             len(train_data) // args.gradient_accumulation_steps * args.epochs
         )
         optimizer, scheduler = build_optimizer(model, iteration_in_total, model_args)
-        if args.federated_optimizer == "FedProx":
-            global_model = copy.deepcopy(model)
         epoch_loss = []
         for epoch in range(args.epochs):
             batch_loss = []
             for batch_idx, batch in enumerate(train_data):
                 x = batch[1].to(device)
+                attention_mask = batch[2].to(device)
                 labels = batch[4].to(device)
                 
                 # Note: x (input_ids) should remain as LongTensor for embedding lookups
                 # Use autocast for automatic mixed precision if fp16 enabled
                 with autocast(enabled=use_amp):
-                    log_probs = model(x)
+                    log_probs = model(x, attention_mask=attention_mask)
                     log_probs = log_probs[0]
                     loss = criterion(log_probs, labels)
-                    if args.federated_optimizer == "FedProx":
-                        fed_prox_reg = 0.0
-                        mu = args.fedprox_mu
-                        for (p, g_p) in zip(model.parameters(), global_model.parameters()):
-                            fed_prox_reg += (mu / 2) * torch.norm((p - g_p.data)) ** 2
-                        loss += fed_prox_reg
+
+                    mu = float(getattr(args, "fedprox_mu", 0.0))
+                    if mu > 0.0:
+                        proximal_term = 0.0
+                        for local_param, global_param in zip(model.parameters(), global_params):
+                            proximal_term += torch.square((local_param - global_param).norm(2))
+                        loss = loss + (mu / 2.0) * proximal_term
 
                     if args.gradient_accumulation_steps > 1:
                         loss = loss / args.gradient_accumulation_steps
@@ -364,6 +365,7 @@ class MyModelTrainer(ClientTrainer):
             for batch_idx, batch in enumerate(test_data):
                 if args.model_class == "transformer":
                     x = batch[1].to(device)
+                    attention_mask = batch[2].to(device)
                     target = batch[4].to(device)
                     # Note: x (input_ids) should remain as LongTensor for embedding lookups
                 else:
@@ -371,7 +373,10 @@ class MyModelTrainer(ClientTrainer):
                 
                 # Use autocast for inference as well when fp16 enabled
                 with autocast(enabled=use_amp):
-                    pred = model(x)
+                    if args.model_class == "transformer":
+                        pred = model(x, attention_mask=attention_mask)
+                    else:
+                        pred = model(x)
                     if args.model_class == "transformer":
                         pred = pred[0]
                     loss = criterion(pred, target)

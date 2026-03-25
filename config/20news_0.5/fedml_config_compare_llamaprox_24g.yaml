@@ -1,0 +1,67 @@
+common_args:
+  training_type: "simulation"
+  random_seed: 0
+
+data_args:
+  dataset: "20news"
+  data_file_path: ~/fednlp_data/data_files/20news_data.h5
+  partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
+  partition_method: "niid_label_clients=20_alpha=0.5"
+  reprocess_input_data: false
+
+model_args:
+  model_type: "llama"
+  model_class: "transformer"
+  model: "HuggingFaceTB/SmolLM-135M"
+  do_lower_case: false
+  formulation: "classification"
+
+train_args:
+  federated_optimizer: "FedAvg"
+  client_id_list: "[]"
+  client_num_in_total: 20
+  client_num_per_round: 8
+  comm_round: 400
+  epochs: 2
+  batch_size: 135
+  eval_batch_size: 16
+  max_seq_length: 128
+  fp16: true
+  output_dir: "./outputs/compare_llama_prox_24g"
+  client_optimizer: AdamW
+  server_optimizer: sgd
+  server_momentum: 0.9
+  server_lr: 1
+  learning_rate: 0.0001
+  weight_decay: 0.001
+  gradient_accumulation_steps: 1
+  clip_grad_norm: true
+  fedprox_mu: 0.1
+  evaluate_during_training: false
+  evaluate_during_training_steps: 10
+  freeze_layers: ''
+  is_debug_mode: false
+  momentum: 0.9
+  max_grad_norm: 1
+  ci: 0
+
+validation_args:
+  frequency_of_the_test: 5
+
+device_args:
+  worker_num: 1
+  using_gpu: true
+  gpu_mapping_file: config/simulation/gpu_mapping.yaml
+  gpu_mapping_key: mapping_default
+
+comm_args:
+  backend: "sp"
+  is_mobile: 0
+
+tracking_args:
+  enable_wandb: false
+  wandb_entity: fedml-team
+  wandb_only_server: true
+  wandb_key: 404bae40078b1624faed523c4e9d25b40590e537
+  wandb_project: fednlp_compare_24g
+  wandb_name: compare_llama_24g
