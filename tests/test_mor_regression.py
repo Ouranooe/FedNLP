@@ -20,6 +20,11 @@ if torch is None:
 else:
     if "wandb" not in sys.modules:
         sys.modules["wandb"] = types.SimpleNamespace(log=lambda *args, **kwargs: None)
+    try:
+        from torch_main import _accumulate_update_gram, _compute_pairwise_cosine_from_gram
+    except Exception:  # pragma: no cover - keep regression tests robust in minimal envs
+        _accumulate_update_gram = None
+        _compute_pairwise_cosine_from_gram = None
 
     from trainer.classification_aggregator import ClassificationAggregator
     from trainer.classification_trainer import (
@@ -116,6 +121,55 @@ else:
             self.assertTrue(
                 torch.allclose(aggregated["backbone.weight"], torch.tensor([15.0]), atol=1e-6)
             )
+
+        def test_pairwise_router_vs_backbone_cosine_stats(self):
+            if _accumulate_update_gram is None or _compute_pairwise_cosine_from_gram is None:
+                self.skipTest("pairwise cosine helpers unavailable")
+
+            router_name = "mor_llama.model.layers.0.mor_router.router.weight"
+            backbone_name = "mor_llama.model.layers.0.mlp.gate_proj.weight"
+
+            global_params = {
+                router_name: torch.tensor([0.0, 0.0]),
+                backbone_name: torch.tensor([0.0, 0.0]),
+            }
+            w_locals = [
+                (
+                    1,
+                    {
+                        router_name: torch.tensor([1.0, 0.0]),
+                        backbone_name: torch.tensor([1.0, 0.0]),
+                    },
+                ),
+                (
+                    1,
+                    {
+                        router_name: torch.tensor([0.0, 1.0]),
+                        backbone_name: torch.tensor([1.0, 0.0]),
+                    },
+                ),
+                (
+                    1,
+                    {
+                        router_name: torch.tensor([-1.0, 0.0]),
+                        backbone_name: torch.tensor([1.0, 0.0]),
+                    },
+                ),
+            ]
+
+            router_filter = lambda n: n.startswith("mor_llama.") and "mor_router" in n
+            backbone_filter = lambda n: n.startswith("mor_llama.") and "mor_router" not in n
+
+            router_gram, _ = _accumulate_update_gram(w_locals, global_params, router_filter)
+            backbone_gram, _ = _accumulate_update_gram(w_locals, global_params, backbone_filter)
+
+            router_stats = _compute_pairwise_cosine_from_gram(router_gram)
+            backbone_stats = _compute_pairwise_cosine_from_gram(backbone_gram)
+
+            self.assertAlmostEqual(router_stats["mean"], -1.0 / 3.0, places=6)
+            self.assertAlmostEqual(backbone_stats["mean"], 1.0, places=6)
+            self.assertEqual(router_stats["total_pairs"], 3)
+            self.assertEqual(backbone_stats["total_pairs"], 3)
 
 
 if __name__ == "__main__":

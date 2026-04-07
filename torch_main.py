@@ -26,6 +26,122 @@ from transformers import (
 )
 
 
+def _compute_pairwise_cosine_from_gram(gram_matrix, eps=1e-12):
+    """Compute pairwise cosine stats from a Gram matrix."""
+    num_clients = int(gram_matrix.shape[0])
+    total_pairs = num_clients * (num_clients - 1) // 2
+    if total_pairs == 0:
+        return {
+            "mean": float("nan"),
+            "min": float("nan"),
+            "max": float("nan"),
+            "valid_pairs": 0,
+            "invalid_pairs": 0,
+            "total_pairs": 0,
+        }
+
+    norms = torch.diag(gram_matrix).clamp_min(0.0)
+    valid_pairs = 0
+    invalid_pairs = 0
+    cosine_sum = 0.0
+    cosine_min = None
+    cosine_max = None
+
+    for i in range(num_clients):
+        for j in range(i + 1, num_clients):
+            denom = float(torch.sqrt(norms[i] * norms[j]).item())
+            if denom <= eps:
+                invalid_pairs += 1
+                continue
+
+            cosine = float(gram_matrix[i, j].item() / denom)
+            valid_pairs += 1
+            cosine_sum += cosine
+            if cosine_min is None or cosine < cosine_min:
+                cosine_min = cosine
+            if cosine_max is None or cosine > cosine_max:
+                cosine_max = cosine
+
+    return {
+        "mean": (cosine_sum / valid_pairs) if valid_pairs > 0 else float("nan"),
+        "min": cosine_min if cosine_min is not None else float("nan"),
+        "max": cosine_max if cosine_max is not None else float("nan"),
+        "valid_pairs": valid_pairs,
+        "invalid_pairs": invalid_pairs,
+        "total_pairs": total_pairs,
+    }
+
+
+def _accumulate_update_gram(
+    w_locals,
+    global_params,
+    param_filter_fn,
+    chunk_size=65536,
+):
+    """
+    Accumulate Gram matrix of client updates for a parameter group.
+
+    For each selected parameter name:
+      delta_i = local_i - global
+      gram += delta @ delta^T
+
+    Missing parameter uploads are treated as zero updates for that parameter.
+    """
+    num_clients = len(w_locals)
+    gram = torch.zeros((num_clients, num_clients), dtype=torch.float64)
+    matched_param_count = 0
+
+    if not global_params:
+        return gram, matched_param_count
+
+    for param_name, global_param in global_params.items():
+        if not param_filter_fn(param_name):
+            continue
+        if not torch.is_tensor(global_param):
+            continue
+        if not torch.is_floating_point(global_param):
+            continue
+
+        global_flat = global_param.detach().cpu().reshape(-1)
+        numel = int(global_flat.numel())
+        if numel == 0:
+            continue
+
+        local_flats = []
+        has_any_upload = False
+        for item in w_locals:
+            model_params = item[1] if isinstance(item, tuple) else item
+            local_param = model_params.get(param_name, None)
+            if (
+                torch.is_tensor(local_param)
+                and local_param.shape == global_param.shape
+                and torch.is_floating_point(local_param)
+            ):
+                local_flats.append(local_param.detach().cpu().reshape(-1))
+                has_any_upload = True
+            else:
+                local_flats.append(None)
+
+        if not has_any_upload:
+            continue
+
+        matched_param_count += 1
+        for start in range(0, numel, chunk_size):
+            end = min(start + chunk_size, numel)
+            global_chunk = global_flat[start:end].to(dtype=torch.float32)
+            delta_chunk = torch.zeros((num_clients, end - start), dtype=torch.float32)
+
+            for idx, local_flat in enumerate(local_flats):
+                if local_flat is None:
+                    continue
+                delta_chunk[idx, :] = local_flat[start:end].to(dtype=torch.float32) - global_chunk
+
+            delta_chunk_f64 = delta_chunk.to(dtype=torch.float64)
+            gram += torch.matmul(delta_chunk_f64, delta_chunk_f64.t())
+
+    return gram, matched_param_count
+
+
 def create_model(args, output_dim=1):
     model_name = args.model
     logging.info(
@@ -350,6 +466,55 @@ if __name__ == "__main__":
             }
         
         # 保存原始的 _aggregate 方法
+        def _log_mor_pairwise_update_cosine(w_locals, global_params):
+            if global_params is None:
+                logging.warning("[MoR Pairwise Cosine] Missing global params; skip statistics.")
+                return
+
+            round_idx = int(getattr(args, "round_idx", 0))
+            num_clients = len(w_locals)
+
+            router_filter = lambda name: name.startswith("mor_llama.") and is_router_param(name)
+            backbone_filter = lambda name: name.startswith("mor_llama.") and (not is_router_param(name))
+
+            router_gram, router_param_count = _accumulate_update_gram(
+                w_locals=w_locals,
+                global_params=global_params,
+                param_filter_fn=router_filter,
+            )
+            backbone_gram, backbone_param_count = _accumulate_update_gram(
+                w_locals=w_locals,
+                global_params=global_params,
+                param_filter_fn=backbone_filter,
+            )
+
+            router_stats = _compute_pairwise_cosine_from_gram(router_gram)
+            backbone_stats = _compute_pairwise_cosine_from_gram(backbone_gram)
+
+            logging.info(
+                "[MoR Pairwise Cosine] round=%s clients=%s pairs=%s "
+                "backbone_cos_mean=%.6f backbone_cos_min=%.6f backbone_cos_max=%.6f "
+                "router_cos_mean=%.6f router_cos_min=%.6f router_cos_max=%.6f "
+                "backbone_valid_pairs=%s backbone_invalid_pairs=%s "
+                "router_valid_pairs=%s router_invalid_pairs=%s "
+                "backbone_param_count=%s router_param_count=%s",
+                round_idx,
+                num_clients,
+                backbone_stats["total_pairs"],
+                backbone_stats["mean"],
+                backbone_stats["min"],
+                backbone_stats["max"],
+                router_stats["mean"],
+                router_stats["min"],
+                router_stats["max"],
+                backbone_stats["valid_pairs"],
+                backbone_stats["invalid_pairs"],
+                router_stats["valid_pairs"],
+                router_stats["invalid_pairs"],
+                backbone_param_count,
+                router_param_count,
+            )
+
         _orig_aggregate = FedAvgAPI._aggregate
         
         def _custom_aggregate(self, w_locals):
@@ -369,11 +534,12 @@ if __name__ == "__main__":
                 logging.warning("[MoR Aggregator PATCH] No models to aggregate!")
                 return None
 
+            prev_global_params = None
+            if hasattr(self, "model_trainer") and hasattr(self.model_trainer, "model"):
+                prev_global_params = self.model_trainer.model.cpu().state_dict()
+
             if is_fedmoe_enabled(args):
                 cfg = get_fedmoe_config(args)
-                prev_global_params = None
-                if hasattr(self, "model_trainer") and hasattr(self.model_trainer, "model"):
-                    prev_global_params = self.model_trainer.model.cpu().state_dict()
 
                 aggregated_params, stats = aggregate_fedmoe_params(
                     w_locals=w_locals,
@@ -403,6 +569,10 @@ if __name__ == "__main__":
                 return aggregated_params
             
             # 检查是否启用自适应 Router 聚合权重
+            pairwise_cosine_enable = bool(_get_mor_config_value("mor_pairwise_cosine_enable", False))
+            if pairwise_cosine_enable and getattr(args, "model_type", "") == "mor_llama":
+                _log_mor_pairwise_update_cosine(w_locals, prev_global_params)
+
             adaptive_router = bool(_get_mor_config_value('mor_adaptive_router_weight', False))
             
             logging.info(f"[MoR Aggregator PATCH] mor_adaptive_router_weight = {adaptive_router}")
