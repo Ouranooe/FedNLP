@@ -27,6 +27,10 @@ moe_args:
   moe_router_temperature: 1.0
   # 负载均衡辅助损失系数
   moe_load_balance_loss_coef: 0.01
+  fedmoe_enable: true
+  fedmoe_experts_per_client: 2
+  fedmoe_assignment_seed: 0
+  fedmoe_keep_expert_if_no_contributor: true
 
 train_args:
   federated_optimizer: "FedAvg"

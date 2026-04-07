@@ -186,6 +186,46 @@ class MyModelTrainer(ClientTrainer):
     def set_model_params(self, model_parameters):
         self.model.load_state_dict(model_parameters, strict=False)
 
+    @staticmethod
+    def _is_finite_tensor(value):
+        if value is None or not torch.is_tensor(value):
+            return False
+        return bool(torch.isfinite(value).all().item())
+
+    @staticmethod
+    def _extract_logits(model_output):
+        if isinstance(model_output, (tuple, list)):
+            return model_output[0]
+        if hasattr(model_output, "logits"):
+            return model_output.logits
+        return model_output
+
+    def _forward_and_compute_loss(self, model, x, attention_mask, labels, criterion, args):
+        is_moe = getattr(args, "model_type", "") == "moe_llama"
+
+        if getattr(args, "model_class", "") == "transformer":
+            if is_moe:
+                model_output = model(x, attention_mask=attention_mask, labels=labels)
+            else:
+                model_output = model(x, attention_mask=attention_mask)
+        else:
+            model_output = model(x)
+
+        if is_moe:
+            if isinstance(model_output, (tuple, list)):
+                if len(model_output) < 2:
+                    raise RuntimeError("moe_llama output must contain (loss, logits)")
+                loss, logits = model_output[0], model_output[1]
+            elif hasattr(model_output, "loss") and hasattr(model_output, "logits"):
+                loss, logits = model_output.loss, model_output.logits
+            else:
+                raise RuntimeError("Unsupported moe_llama output format")
+            return loss, logits
+
+        logits = self._extract_logits(model_output)
+        loss = criterion(logits, labels)
+        return loss, logits
+
     def train(self, train_data, device, args, test_data=None):
         model_args = ClassificationArgs()
         model_args.model_name = args.model
@@ -232,27 +272,55 @@ class MyModelTrainer(ClientTrainer):
         use_amp = getattr(args, 'fp16', False)
         scaler = GradScaler() if use_amp else None
         
-        tr_loss = 0
-        # train and update
+        tr_loss = 0.0
         criterion = torch.nn.CrossEntropyLoss().to(device)
         iteration_in_total = (
             len(train_data) // args.gradient_accumulation_steps * args.epochs
         )
         optimizer, scheduler = build_optimizer(model, iteration_in_total, model_args)
         epoch_loss = []
+        total_skipped_non_finite_batches = 0
+
+        is_moe = getattr(args, "model_type", "") == "moe_llama"
+        moe_num_experts = int(getattr(model, "num_experts", 0)) if is_moe else 0
+
+        model.zero_grad()
         for epoch in range(args.epochs):
             batch_loss = []
+            accumulated_steps = 0
+            epoch_skipped_non_finite_batches = 0
+            epoch_router_entropy_sum = 0.0
+            epoch_router_entropy_count = 0
+            epoch_expert_hits = (
+                torch.zeros(moe_num_experts, dtype=torch.long) if moe_num_experts > 0 else None
+            )
+
             for batch_idx, batch in enumerate(train_data):
                 x = batch[1].to(device)
                 attention_mask = batch[2].to(device)
                 labels = batch[4].to(device)
-                
-                # Note: x (input_ids) should remain as LongTensor for embedding lookups
-                # Use autocast for automatic mixed precision if fp16 enabled
+
                 with autocast(enabled=use_amp):
-                    log_probs = model(x, attention_mask=attention_mask)
-                    log_probs = log_probs[0]
-                    loss = criterion(log_probs, labels)
+                    loss, logits = self._forward_and_compute_loss(
+                        model=model,
+                        x=x,
+                        attention_mask=attention_mask,
+                        labels=labels,
+                        criterion=criterion,
+                        args=args,
+                    )
+
+                    if not self._is_finite_tensor(loss) or not self._is_finite_tensor(logits):
+                        epoch_skipped_non_finite_batches += 1
+                        total_skipped_non_finite_batches += 1
+                        logging.warning(
+                            "[FedMoE Stability] Skip non-finite batch. client=%s epoch=%s batch=%s",
+                            self.id,
+                            epoch,
+                            batch_idx,
+                        )
+                        model.zero_grad()
+                        continue
 
                     mu = float(getattr(args, "fedprox_mu", 0.0))
                     if mu > 0.0:
@@ -261,61 +329,90 @@ class MyModelTrainer(ClientTrainer):
                             proximal_term += torch.square((local_param - global_param).norm(2))
                         loss = loss + (mu / 2.0) * proximal_term
 
+                    raw_loss_for_log = loss
                     if args.gradient_accumulation_steps > 1:
                         loss = loss / args.gradient_accumulation_steps
 
-                # Use scaler for fp16 backward pass if enabled
                 if use_amp:
                     scaler.scale(loss).backward()
-                    tr_loss += loss.item()
                 else:
                     loss.backward()
-                    tr_loss += loss.item()
-                # logging.info(
-                #    "Update Epoch: {} for Client Index: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
-                #        self.id,
-                #        epoch,
-                #        (batch_idx + 1) * args.batch_size,
-                #        len(train_data) * args.batch_size,
-                #        100.0 * (batch_idx + 1) / len(train_data),
-                #        loss.item(),
-                #    )
-                # )
-                if (batch_idx + 1) % args.gradient_accumulation_steps == 0:
+
+                tr_loss += float(raw_loss_for_log.detach().item())
+                accumulated_steps += 1
+
+                if is_moe and hasattr(model, "get_last_router_stats"):
+                    router_stats = model.get_last_router_stats()
+                    if isinstance(router_stats, dict):
+                        entropy = router_stats.get("entropy", None)
+                        if isinstance(entropy, float):
+                            epoch_router_entropy_sum += entropy
+                            epoch_router_entropy_count += 1
+
+                        hits = router_stats.get("expert_hits", None)
+                        if epoch_expert_hits is not None and isinstance(hits, list) and len(hits) == len(epoch_expert_hits):
+                            epoch_expert_hits += torch.tensor(hits, dtype=torch.long)
+
+                if accumulated_steps % args.gradient_accumulation_steps == 0:
                     if args.clip_grad_norm:
                         if use_amp:
-                            # Unscale gradients before clipping when using AMP
                             scaler.unscale_(optimizer)
                         torch.nn.utils.clip_grad_norm_(
                             model.parameters(), args.max_grad_norm
                         )
-                    
+
                     if use_amp:
                         scaler.step(optimizer)
                         scaler.update()
                     else:
                         optimizer.step()
-                        
-                    scheduler.step()  # Update learning rate schedule
+
+                    scheduler.step()
                     model.zero_grad()
                     batch_loss.append(tr_loss)
-                    tr_loss = 0
-                    # if args.evaluate_during_training and (args.evaluate_during_training_steps > 0 and global_step % args.evaluate_during_training_steps == 0):
-                    #    metrics = self.
+                    tr_loss = 0.0
 
-                    # global_step += 1
+            if accumulated_steps % args.gradient_accumulation_steps != 0:
+                if args.clip_grad_norm:
+                    if use_amp:
+                        scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                if use_amp:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                scheduler.step()
+                model.zero_grad()
+                batch_loss.append(tr_loss)
+                tr_loss = 0.0
 
-                # Uncommet this following line to avoid nan loss
-                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            epoch_avg = float("nan")
+            if len(batch_loss) > 0:
+                epoch_avg = sum(batch_loss) / len(batch_loss)
+            epoch_loss.append(epoch_avg)
 
-                # optimizer.step()
-
-            epoch_loss.append(sum(batch_loss) / len(batch_loss))
             logging.info(
                 "Client Index = {}\tEpoch: {}\tLoss: {:.6f}".format(
-                    self.id, epoch, sum(epoch_loss) / len(epoch_loss)
+                    self.id, epoch, epoch_avg
                 )
             )
+            if is_moe:
+                avg_entropy = (
+                    epoch_router_entropy_sum / epoch_router_entropy_count
+                    if epoch_router_entropy_count > 0
+                    else float("nan")
+                )
+                expert_hit_log = epoch_expert_hits.tolist() if epoch_expert_hits is not None else []
+                logging.info(
+                    "[FedMoE Diagnostics] Client=%s Epoch=%s router_entropy=%.6f expert_hits=%s skipped_non_finite_batches=%s",
+                    self.id,
+                    epoch,
+                    avg_entropy,
+                    expert_hit_log,
+                    epoch_skipped_non_finite_batches,
+                )
+
             if args.evaluate_during_training and test_data is not None:
                 metrics = self.test(test_data, device, args)
                 logging.info(
@@ -323,6 +420,13 @@ class MyModelTrainer(ClientTrainer):
                         self.id, epoch, metrics["test_correct"] / metrics["test_total"]
                     )
                 )
+
+        if total_skipped_non_finite_batches > 0:
+            logging.warning(
+                "[FedMoE Stability] Client=%s total skipped non-finite batches=%s",
+                self.id,
+                total_skipped_non_finite_batches,
+            )
         
         # 记录epoch loss差值用于Router自适应加权聚合
         # 检查配置 - 支持两种访问方式: args.mor_adaptive_router_weight 或 args.mor_args.mor_adaptive_router_weight
@@ -336,9 +440,12 @@ class MyModelTrainer(ClientTrainer):
         
         logging.info(f"[MoR Adaptive DEBUG] mor_adaptive_router_weight = {adaptive_router_weight}, epoch_loss count = {len(epoch_loss)}")
         
-        if adaptive_router_weight and len(epoch_loss) >= 2:
-            first_epoch_loss = epoch_loss[0]
-            last_epoch_loss = epoch_loss[-1]
+        finite_epoch_loss = [
+            v for v in epoch_loss if isinstance(v, float) and torch.isfinite(torch.tensor(v))
+        ]
+        if adaptive_router_weight and len(finite_epoch_loss) >= 2:
+            first_epoch_loss = finite_epoch_loss[0]
+            last_epoch_loss = finite_epoch_loss[-1]
             loss_delta = last_epoch_loss - first_epoch_loss  # 负值表示loss下降
             client_id = getattr(self, 'id', getattr(self, 'client_index', 0))
             set_client_loss_delta(client_id, loss_delta, first_epoch_loss=first_epoch_loss)
@@ -358,6 +465,7 @@ class MyModelTrainer(ClientTrainer):
 
         metrics = {"test_correct": 0, "test_loss": 0, "test_total": 0}
         use_amp = getattr(args, 'fp16', False)
+        skipped_non_finite_batches = 0
 
         criterion = torch.nn.CrossEntropyLoss().to(device)
 
@@ -381,6 +489,16 @@ class MyModelTrainer(ClientTrainer):
                         pred = pred[0]
                     loss = criterion(pred, target)
 
+                if not self._is_finite_tensor(pred) or not self._is_finite_tensor(loss):
+                    skipped_non_finite_batches += 1
+                    logging.warning(
+                        "[FedMoE Stability] Skip non-finite eval batch. client=%s round=%s batch=%s",
+                        rank,
+                        round_idx,
+                        batch_idx,
+                    )
+                    continue
+
                 _, predicted = torch.max(pred, -1)
                 correct = predicted.eq(target).sum()
 
@@ -398,5 +516,7 @@ class MyModelTrainer(ClientTrainer):
         logging.info(f"  Correct: {metrics['test_correct']}")  
         logging.info(f"  Accuracy: {accuracy:.4f}")
         logging.info(f"  Average Loss: {avg_loss:.6f}")
+        if skipped_non_finite_batches > 0:
+            logging.warning(f"  Skipped non-finite eval batches: {skipped_non_finite_batches}")
         
         return metrics

@@ -68,6 +68,7 @@ class MoELlamaForSequenceClassification(nn.Module):
         )
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         self._init_classifier_weights()
+        self._last_router_stats = None
 
     def _init_classifier_weights(self):
         nn.init.normal_(self.classifier.weight, std=0.02)
@@ -140,6 +141,9 @@ class MoELlamaForSequenceClassification(nn.Module):
 
         return num_experts * torch.sum(importance * load)
 
+    def get_last_router_stats(self):
+        return self._last_router_stats
+
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -161,8 +165,26 @@ class MoELlamaForSequenceClassification(nn.Module):
         router_logits = self.router(router_inputs) / max(self.router_temperature, 1e-6)
         router_probs = torch.softmax(router_logits, dim=-1)
 
-        topk_logits, topk_indices = torch.topk(router_logits, k=self.top_k, dim=-1)
-        topk_weights = torch.softmax(topk_logits, dim=-1)
+        _, topk_indices = torch.topk(router_logits, k=self.top_k, dim=-1)
+        # Use probabilities from the full softmax as gate weights so router
+        # keeps gradient signal even when top_k == 1.
+        topk_weights = router_probs.gather(dim=1, index=topk_indices)
+        topk_weights = topk_weights / torch.clamp(
+            topk_weights.sum(dim=-1, keepdim=True), min=1e-9
+        )
+
+        with torch.no_grad():
+            entropy = -torch.sum(
+                router_probs * torch.log(torch.clamp(router_probs, min=1e-9)), dim=-1
+            ).mean()
+            expert_hits = torch.bincount(
+                topk_indices.reshape(-1), minlength=self.num_experts
+            )
+            self._last_router_stats = {
+                "entropy": float(entropy.item()),
+                "expert_hits": expert_hits.detach().cpu().tolist(),
+                "batch_size": int(router_logits.size(0)),
+            }
 
         batch_size = router_logits.size(0)
 

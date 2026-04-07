@@ -1,4 +1,5 @@
 import logging
+import torch
 
 import fedml
 from data.data_loader import load
@@ -10,6 +11,14 @@ from model.moe_llama_model import MoELlamaForSequenceClassification
 from model.mor_llama_model import MoRLlamaForSequenceClassification, create_mor_config
 from trainer.classification_aggregator import ClassificationAggregator
 from trainer.classification_trainer import MyModelTrainer as MyCLSTrainer
+from trainer.fedmoe_aggregator import FedMoEAggregator
+from trainer.fedmoe_trainer import FedMoEModelTrainer
+from trainer.fedmoe_utils import (
+    aggregate_fedmoe_params,
+    get_expert_id_from_param_name,
+    get_fedmoe_config,
+    is_fedmoe_enabled,
+)
 from transformers import (
     BertConfig,
     DistilBertConfig,
@@ -144,7 +153,10 @@ def create_model(args, output_dim=1):
     else:
         model = model_class.from_pretrained(args.model, config=config)
     
-    trainer = MyCLSTrainer(model, args)
+    if is_fedmoe_enabled(args):
+        trainer = FedMoEModelTrainer(model, args)
+    else:
+        trainer = MyCLSTrainer(model, args)
 
     # calculate the model size
     param_size = 0
@@ -172,7 +184,10 @@ if __name__ == "__main__":
 
     # load model and trainer
     model, trainer = create_model(args, output_dim)
-    aggregator = ClassificationAggregator(model, args)
+    if is_fedmoe_enabled(args):
+        aggregator = FedMoEAggregator(model, args)
+    else:
+        aggregator = ClassificationAggregator(model, args)
     
     # --- PATCH: force FedML SP to use our custom trainer ---
     import fedml.ml.trainer.my_model_trainer_classification as fedml_default_trainer
@@ -183,12 +198,14 @@ if __name__ == "__main__":
 
     class ModelTrainerCLS(_orig_cls):
         def train(self, train_data, device, args):
-            t = MyCLSTrainer(self.model, args)
+            trainer_cls = FedMoEModelTrainer if is_fedmoe_enabled(args) else MyCLSTrainer
+            t = trainer_cls(self.model, args)
             t.id = getattr(self, "client_index", getattr(self, "id", 0))
             return t.train(train_data, device, args)
 
         def test(self, test_data, device, args):
-            t = MyCLSTrainer(self.model, args)
+            trainer_cls = FedMoEModelTrainer if is_fedmoe_enabled(args) else MyCLSTrainer
+            t = trainer_cls(self.model, args)
             t.id = getattr(self, "client_index", getattr(self, "id", 0))
             # 补上可能缺失的属性
             if not hasattr(args, "round_idx"):
@@ -198,6 +215,11 @@ if __name__ == "__main__":
             return t.test(test_data, device, args)
 
         def get_model_params(self):
+            if is_fedmoe_enabled(args):
+                t = FedMoEModelTrainer(self.model, args)
+                t.id = getattr(self, "client_index", getattr(self, "id", 0))
+                return t.get_model_params()
+
             """
             获取模型参数用于上传聚合。
             
@@ -241,6 +263,12 @@ if __name__ == "__main__":
                 return state_dict
 
         def set_model_params(self, model_parameters):
+            if is_fedmoe_enabled(args):
+                t = FedMoEModelTrainer(self.model, args)
+                t.id = getattr(self, "client_index", getattr(self, "id", 0))
+                t.set_model_params(model_parameters)
+                return
+
             """设置模型参数，支持部分参数更新"""
             self.model.load_state_dict(model_parameters, strict=False)
 
@@ -288,6 +316,38 @@ if __name__ == "__main__":
             return max(float(tau), 1e-8), (
                 f"warmup(start={tau_start}, end={tau_end}, rounds={warmup_rounds}, round_idx={round_idx})"
             )
+
+        def _compute_fedmoe_param_delta_summary(previous_params, aggregated_params, num_experts):
+            if previous_params is None:
+                return None
+
+            shared_sq_sum = 0.0
+            expert_sq_sum = {expert_id: 0.0 for expert_id in range(num_experts)}
+            shared_count = 0
+            expert_count = {expert_id: 0 for expert_id in range(num_experts)}
+
+            for name, new_param in aggregated_params.items():
+                old_param = previous_params.get(name, None)
+                if old_param is None or not torch.is_tensor(new_param) or not torch.is_tensor(old_param):
+                    continue
+                if new_param.shape != old_param.shape:
+                    continue
+
+                delta_sq = float(torch.sum((new_param.float() - old_param.float()) ** 2).item())
+                expert_id = get_expert_id_from_param_name(name)
+                if expert_id is None:
+                    shared_sq_sum += delta_sq
+                    shared_count += 1
+                elif 0 <= expert_id < num_experts:
+                    expert_sq_sum[expert_id] += delta_sq
+                    expert_count[expert_id] += 1
+
+            return {
+                "shared_l2": shared_sq_sum ** 0.5,
+                "shared_param_count": shared_count,
+                "expert_l2": {k: v ** 0.5 for k, v in expert_sq_sum.items()},
+                "expert_param_count": expert_count,
+            }
         
         # 保存原始的 _aggregate 方法
         _orig_aggregate = FedAvgAPI._aggregate
@@ -308,6 +368,39 @@ if __name__ == "__main__":
             if len(w_locals) == 0:
                 logging.warning("[MoR Aggregator PATCH] No models to aggregate!")
                 return None
+
+            if is_fedmoe_enabled(args):
+                cfg = get_fedmoe_config(args)
+                prev_global_params = None
+                if hasattr(self, "model_trainer") and hasattr(self.model_trainer, "model"):
+                    prev_global_params = self.model_trainer.model.cpu().state_dict()
+
+                aggregated_params, stats = aggregate_fedmoe_params(
+                    w_locals=w_locals,
+                    previous_global_params=prev_global_params,
+                    num_experts=cfg["num_experts"],
+                    keep_expert_if_no_contributor=cfg["keep_expert_if_no_contributor"],
+                )
+                delta_summary = _compute_fedmoe_param_delta_summary(
+                    prev_global_params,
+                    aggregated_params,
+                    cfg["num_experts"],
+                )
+                logging.info(
+                    "[FedMoE Aggregator PATCH] modular aggregation enabled. "
+                    "shared_param_count=%s, expert_contributors=%s",
+                    stats["shared_param_count"],
+                    stats["expert_contributors"],
+                )
+                if delta_summary is not None:
+                    logging.info(
+                        "[FedMoE Aggregator PATCH] param_delta_l2 shared=%.6f (count=%s), experts=%s, expert_param_count=%s",
+                        delta_summary["shared_l2"],
+                        delta_summary["shared_param_count"],
+                        delta_summary["expert_l2"],
+                        delta_summary["expert_param_count"],
+                    )
+                return aggregated_params
             
             # 检查是否启用自适应 Router 聚合权重
             adaptive_router = bool(_get_mor_config_value('mor_adaptive_router_weight', False))
