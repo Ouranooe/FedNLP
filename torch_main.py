@@ -19,6 +19,7 @@ from trainer.fedmoe_utils import (
     get_fedmoe_config,
     is_fedmoe_enabled,
 )
+from trainer.cea_pruning import CEAPruningManager, store_lgra_weights, pop_lgra_weights
 from transformers import (
     BertConfig,
     DistilBertConfig,
@@ -617,6 +618,7 @@ if __name__ == "__main__":
                         logging.info(f"  Client {cid}: loss_delta={delta:.6f}, weight={weight:.4f}")
                     logging.info("=" * 60)
                     
+                    store_lgra_weights(router_weights)
                     result = _adaptive_aggregate(w_locals, router_weights, client_ids)
                     clear_client_loss_deltas()
                     return result
@@ -678,7 +680,132 @@ if __name__ == "__main__":
     except ImportError as e:
         logging.warning(f"Could not patch FedML aggregator: {e}")
     # --- AGGREGATOR PATCH END ---
-    
+
+    # --- CEA-PRUNING PATCH ---
+    _use_cea = bool(getattr(args, 'use_cea_pruning', False))
+    if _use_cea:
+        try:
+            import copy
+            import numpy as np
+            from fedml import mlops
+
+            _cea_manager = CEAPruningManager(
+                candidate_clients=int(getattr(args, 'cea_candidate_clients', args.client_num_per_round)),
+                keep_clients=int(getattr(args, 'cea_keep_clients', max(1, args.client_num_per_round - 2))),
+                warmup_rounds=int(getattr(args, 'cea_warmup_rounds', 5)),
+                ema_beta=float(getattr(args, 'cea_ema_beta', 0.9)),
+                fairness_f=float(getattr(args, 'cea_fairness_f', 0.3)),
+                max_stale_rounds=int(getattr(args, 'cea_max_stale_rounds', 6)),
+            )
+            logging.info(
+                "[CEA] Initialized: candidate=%d keep=%d warmup=%d ema_beta=%.2f f=%.2f stale=%d",
+                _cea_manager.candidate_clients, _cea_manager.keep_clients,
+                _cea_manager.warmup_rounds, _cea_manager.ema_beta,
+                _cea_manager.fairness_f, _cea_manager.max_stale_rounds,
+            )
+
+            _orig_train = FedAvgAPI.train
+
+            def _cea_train(self):
+                logging.info("[CEA] Patched train() loop ACTIVE")
+                w_global = self.model_trainer.get_model_params()
+                mlops.log_training_status(mlops.ClientConstants.MSG_MLOPS_CLIENT_STATUS_TRAINING)
+                mlops.log_aggregation_status(mlops.ServerConstants.MSG_MLOPS_SERVER_STATUS_RUNNING)
+                mlops.log_round_info(self.args.comm_round, -1)
+
+                # estimate single-client comm cost (param count * 4 bytes * 2 directions)
+                _param_count = sum(p.numel() for p in self.model.parameters())
+                _single_client_comm = _param_count * 4 * 2  # bytes (upload + download)
+
+                for round_idx in range(self.args.comm_round):
+                    logging.info("################Communication round : %d", round_idx)
+                    args.round_idx = round_idx
+
+                    # Step 1: generate candidates (original FedML sampling)
+                    candidate_indexes = self._client_sampling(
+                        round_idx,
+                        self.args.client_num_in_total,
+                        _cea_manager.candidate_clients,
+                    )
+                    candidate_indexes = list(candidate_indexes)
+
+                    # Step 2: CEA pruning
+                    selected_indexes, pruned_indexes = _cea_manager.select_clients(
+                        candidate_indexes, round_idx,
+                    )
+
+                    # Step 3: train only selected clients
+                    w_locals = []
+                    for idx, client_idx in enumerate(selected_indexes):
+                        if idx >= len(self.client_list):
+                            break
+                        client = self.client_list[idx]
+                        client.update_local_dataset(
+                            client_idx,
+                            self.train_data_local_dict[client_idx],
+                            self.test_data_local_dict[client_idx],
+                            self.train_data_local_num_dict[client_idx],
+                        )
+                        mlops.event("train", event_started=True,
+                                    event_value="{}_{}".format(round_idx, idx))
+                        w = client.train(copy.deepcopy(w_global))
+                        mlops.event("train", event_started=False,
+                                    event_value="{}_{}".format(round_idx, idx))
+                        w_locals.append(
+                            (client.get_sample_number(), copy.deepcopy(w))
+                        )
+
+                    # Step 4: aggregate (uses existing _custom_aggregate or default)
+                    mlops.event("agg", event_started=True, event_value=str(round_idx))
+                    w_global = self._aggregate(w_locals)
+                    self.model_trainer.set_model_params(w_global)
+                    mlops.event("agg", event_started=False, event_value=str(round_idx))
+
+                    # Step 5: update CEA state with LGRA weights
+                    lgra_w = pop_lgra_weights()
+                    if not lgra_w:
+                        # no adaptive router this round -> uniform weights
+                        n = len(selected_indexes)
+                        lgra_w = {cid: 1.0 / n for cid in selected_indexes}
+                    _cea_manager.update_after_round(selected_indexes, lgra_w, round_idx)
+
+                    # Step 6: log CEA metrics
+                    round_comm = len(selected_indexes) * _single_client_comm
+                    logging.info(
+                        "[CEA] round=%d candidate_clients=%s selected_clients=%s "
+                        "pruned_clients=%s lgra_weights=%s round_comm_bytes=%d",
+                        round_idx,
+                        [int(c) for c in candidate_indexes],
+                        [int(c) for c in selected_indexes],
+                        [int(c) for c in pruned_indexes],
+                        {int(k): round(v, 4) for k, v in lgra_w.items()},
+                        round_comm,
+                    )
+                    logging.info(
+                        "[CEA] round=%d state=%s",
+                        round_idx, _cea_manager.get_state_summary(),
+                    )
+
+                    # Step 7: test
+                    if round_idx == self.args.comm_round - 1:
+                        self._local_test_on_all_clients(round_idx)
+                    elif round_idx % self.args.frequency_of_the_test == 0:
+                        if self.args.dataset.startswith("stackoverflow"):
+                            self._local_test_on_validation_set(round_idx)
+                        else:
+                            self._local_test_on_all_clients(round_idx)
+
+                    mlops.log_round_info(self.args.comm_round, round_idx)
+
+                mlops.log_training_finished_status()
+                mlops.log_aggregation_finished_status()
+
+            FedAvgAPI.train = _cea_train
+            logging.info("[CEA] FedAvgAPI.train patched for CEA-Pruning.")
+        except ImportError as e:
+            logging.warning("[CEA] Could not patch FedAvgAPI.train: %s", e)
+    # --- CEA-PRUNING PATCH END ---
+
     # start training
     fedml_runner = FedMLRunner(args, device, dataset, model, trainer, aggregator)
     fedml_runner.run()
