@@ -1,0 +1,302 @@
+--- TASK START: Mon May 25 01:28:32 CST 2026 ---
+--- CONFIG FILE: config/MoR_0.7/fedml_config_compare_mor_expert_24g.yaml ---
+--- CONFIG CONTENT ---
+common_args:
+  training_type: "simulation"
+  random_seed: 0
+
+data_args:
+  dataset: "20news"
+  data_file_path: ~/fednlp_data/data_files/20news_data.h5
+  partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
+  partition_method: "niid_label_clients=20_alpha=1"
+  reprocess_input_data: false
+
+model_args:
+  model_type: "mor_llama"
+  model_class: "transformer"
+  model: "HuggingFaceTB/SmolLM-135M"
+  do_lower_case: false
+  formulation: "classification"
+
+mor_args:
+  mor_enable: true
+  mor_type: "expert"
+  mor_skip_router_first_round: false
+  mor_adaptive_router_weight: false
+  mor_router_weight_mode: "absolute"
+  mor_router_weight_tau: 1.0
+  mor_router_weight_tau_warmup: false
+  mor_router_weight_tau_warmup_start: 2.0
+  mor_router_weight_tau_warmup_end: 1.0
+  mor_router_weight_tau_warmup_rounds: 30
+  mor_capacity: "1.0,0.7,0.4"
+  mor_rand_router: false
+  mor_router_type: "linear"
+  mor_z_loss: false
+  mor_z_coeff: 0.0001
+  mor_temp: 1.0
+  mor_loss_coeff: 0.0001
+  mor_expert_cap_warmup_step: 0
+  mor_expert_router_func: "sigmoid"
+  mor_expert_alpha: 0.1
+  mor_expert_sampling: "aux_loss"
+  mor_expert_include_first: true
+  mor_expert_coeff: 0.0001
+  mor_expert_gating: "weighted"
+  mor_token_router_func: "sigmoid"
+  mor_token_alpha: 0.1
+  mor_token_balancing: "loss"
+  mor_token_coeff: 0.001
+  mor_token_u: 0.001
+  mor_token_gating: "weighted"
+  mor_token_bal_warmup_step: 0
+
+recursive_args:
+  recursive_enable: true
+  recursive_base_depth: null
+  recursive_num_recursion: 3
+  recursive_sharing: "middle_cycle"
+  recursive_ln_share: false
+  recursive_initialization: "average"
+
+kv_sharing_args:
+  kv_sharing_enable: false
+  kv_sharing_base_depth: null
+  kv_sharing_num_recursion: null
+  kv_sharing_sharing: null
+
+train_args:
+  federated_optimizer: "FedAvg"
+  client_id_list: "[]"
+  client_num_in_total: 20
+  client_num_per_round: 8
+  comm_round: 400
+  epochs: 2
+  batch_size: 135
+  eval_batch_size: 16
+  max_seq_length: 128
+  fp16: true
+  output_dir: "./outputs/compare_mor_expert_24g"
+  client_optimizer: AdamW
+  server_optimizer: sgd
+  server_momentum: 0.9
+  server_lr: 1
+  learning_rate: 0.0001
+  weight_decay: 0.001
+  gradient_accumulation_steps: 1
+  clip_grad_norm: true
+  fedprox_mu: 0
+  evaluate_during_training: false
+  evaluate_during_training_steps: 10
+  freeze_layers: ''
+  is_debug_mode: false
+  momentum: 0.9
+  max_grad_norm: 1
+  ci: 0
+
+validation_args:
+  frequency_of_the_test: 5
+
+device_args:
+  worker_num: 1
+  using_gpu: true
+  gpu_mapping_file: config/20news/gpu_mapping.yaml
+  gpu_mapping_key: mapping_0
+
+comm_args:
+  backend: "sp"
+  is_mobile: 0
+
+tracking_args:
+  enable_wandb: false
+  wandb_entity: fedml-team
+  wandb_only_server: true
+  wandb_key: 404bae40078b1624faed523c4e9d25b40590e537
+  wandb_project: fednlp_compare_24g
+  wandb_name: compare_mor_expert_24g
+
+--- COMMAND OUTPUT ---
+
+
+libgomp: Invalid value for environment variable OMP_NUM_THREADS
+/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/requests/__init__.py:109: RequestsDependencyWarning: urllib3 (2.7.0) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!
+  warnings.warn(
+/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/fedml/computing/scheduler/comm_utils/sys_utils.py:17: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import parse_version
+
+libgomp: Invalid value for environment variable OMP_NUM_THREADS
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:28:39.574541330] [INFO] [__init__.py:164:init] args.rank = 0, args.worker_num = 1
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:28:39.673709392] [INFO] [ml_engine_adapter.py:147:get_torch_device] args = <fedml.arguments.Arguments object at 0x7fcf01a9f1c0>, using_gpu = True, device_id = 0, device_type = gpu
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:28:39.814878225] [INFO] [device.py:49:get_device] device = cuda:0
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:28:39.815034866] [INFO] [data_loader.py:75:load_synthetic_data] load_data. dataset_name = 20news
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:28:39.821411371] [INFO] [data_loader.py:78:load_synthetic_data] ['rec.sport.hockey', 'rec.sport.baseball', 'talk.politics.guns', 'sci.crypt', 'sci.electronics', 'comp.sys.mac.hardware', 'rec.motorcycles', 'talk.politics.mideast', 'alt.atheism', 'comp.os.ms-windows.misc', 'rec.autos', 'sci.med', 'soc.religion.christian', 'comp.sys.ibm.pc.hardware', 'misc.forsale', 'talk.politics.misc', 'comp.windows.x', 'sci.space', 'comp.graphics', 'talk.religion.misc']
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:28:39.821492910] [INFO] [data_loader.py:78:load_synthetic_data] 
+
+Loading index from h5 file.:   0%|          | 0/20 [00:00<?, ?it/s]Loading index from h5 file.: 100%|██████████| 20/20 [00:00<00:00, 2127.90it/s]
+Loading data from h5 file.train_data:   0%|          | 0/11314 [00:00<?, ?it/s]Loading data from h5 file.train_data:   2%|▏         | 256/11314 [00:00<00:04, 2557.72it/s]Loading data from h5 file.train_data:   5%|▍         | 519/11314 [00:00<00:04, 2595.77it/s]Loading data from h5 file.train_data:   7%|▋         | 780/11314 [00:00<00:04, 2597.99it/s]Loading data from h5 file.train_data:   9%|▉         | 1040/11314 [00:00<00:03, 2580.89it/s]Loading data from h5 file.train_data:  11%|█▏        | 1299/11314 [00:00<00:03, 2562.28it/s]Loading data from h5 file.train_data:  14%|█▍        | 1556/11314 [00:00<00:03, 2544.22it/s]Loading data from h5 file.train_data:  16%|█▌        | 1811/11314 [00:00<00:03, 2543.38it/s]Loading data from h5 file.train_data:  18%|█▊        | 2066/11314 [00:00<00:03, 2527.87it/s]Loading data from h5 file.train_data:  20%|██        | 2319/11314 [00:00<00:03, 2508.55it/s]Loading data from h5 file.train_data:  23%|██▎       | 2570/11314 [00:01<00:03, 2508.36it/s]Loading data from h5 file.train_data:  25%|██▍       | 2824/11314 [00:01<00:03, 2516.62it/s]Loading data from h5 file.train_data:  27%|██▋       | 3076/11314 [00:01<00:03, 2505.52it/s]Loading data from h5 file.train_data:  29%|██▉       | 3329/11314 [00:01<00:03, 2509.53it/s]Loading data from h5 file.train_data:  32%|███▏      | 3583/11314 [00:01<00:03, 2517.97it/s]Loading data from h5 file.train_data:  34%|███▍      | 3840/11314 [00:01<00:02, 2531.19it/s]Loading data from h5 file.train_data:  36%|███▌      | 4094/11314 [00:01<00:02, 2528.79it/s]Loading data from h5 file.train_data:  38%|███▊      | 4350/11314 [00:01<00:02, 2535.89it/s]Loading data from h5 file.train_data:  41%|████      | 4604/11314 [00:01<00:02, 2533.75it/s]Loading data from h5 file.train_data:  43%|████▎     | 4859/11314 [00:01<00:02, 2538.54it/s]Loading data from h5 file.train_data:  45%|████▌     | 5113/11314 [00:02<00:02, 2535.64it/s]Loading data from h5 file.train_data:  47%|████▋     | 5369/11314 [00:02<00:02, 2542.12it/s]Loading data from h5 file.train_data:  50%|████▉     | 5626/11314 [00:02<00:02, 2548.19it/s]Loading data from h5 file.train_data:  52%|█████▏    | 5881/11314 [00:02<00:02, 2535.60it/s]Loading data from h5 file.train_data:  54%|█████▍    | 6135/11314 [00:02<00:02, 2536.35it/s]Loading data from h5 file.train_data:  56%|█████▋    | 6391/11314 [00:02<00:01, 2543.21it/s]Loading data from h5 file.train_data:  59%|█████▉    | 6648/11314 [00:02<00:01, 2548.81it/s]Loading data from h5 file.train_data:  61%|██████    | 6903/11314 [00:02<00:01, 2526.61it/s]Loading data from h5 file.train_data:  63%|██████▎   | 7162/11314 [00:02<00:01, 2543.46it/s]Loading data from h5 file.train_data:  66%|██████▌   | 7417/11314 [00:02<00:01, 2537.71it/s]Loading data from h5 file.train_data:  68%|██████▊   | 7674/11314 [00:03<00:01, 2547.23it/s]Loading data from h5 file.train_data:  70%|███████   | 7935/11314 [00:03<00:01, 2563.52it/s]Loading data from h5 file.train_data:  72%|███████▏  | 8194/11314 [00:03<00:01, 2569.06it/s]Loading data from h5 file.train_data:  75%|███████▍  | 8452/11314 [00:03<00:01, 2570.23it/s]Loading data from h5 file.train_data:  77%|███████▋  | 8710/11314 [00:03<00:01, 2545.02it/s]Loading data from h5 file.train_data:  79%|███████▉  | 8965/11314 [00:03<00:00, 2523.16it/s]Loading data from h5 file.train_data:  81%|████████▏ | 9218/11314 [00:03<00:00, 2522.82it/s]Loading data from h5 file.train_data:  84%|████████▎ | 9471/11314 [00:03<00:00, 2513.81it/s]Loading data from h5 file.train_data:  86%|████████▌ | 9725/11314 [00:03<00:00, 2520.44it/s]Loading data from h5 file.train_data:  88%|████████▊ | 9982/11314 [00:03<00:00, 2533.74it/s]Loading data from h5 file.train_data:  91%|█████████ | 10240/11314 [00:04<00:00, 2546.54it/s]Loading data from h5 file.train_data:  93%|█████████▎| 10495/11314 [00:04<00:00, 2533.45it/s]Loading data from h5 file.train_data:  95%|█████████▌| 10749/11314 [00:04<00:00, 2511.64it/s]Loading data from h5 file.train_data:  97%|█████████▋| 11004/11314 [00:04<00:00, 2522.06it/s]Loading data from h5 file.train_data: 100%|█████████▉| 11261/11314 [00:04<00:00, 2535.23it/s]Loading data from h5 file.train_data: 100%|██████████| 11314/11314 [00:04<00:00, 2536.90it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:28:51.911148309] [INFO] [base_data_manager.py:231:_load_federated_data_server] caching test index size 7532test cut off None
+Loading data from h5 file.test_data:   0%|          | 0/7532 [00:00<?, ?it/s]Loading data from h5 file.test_data:   3%|▎         | 253/7532 [00:00<00:02, 2520.68it/s]Loading data from h5 file.test_data:   7%|▋         | 506/7532 [00:00<00:02, 2511.42it/s]Loading data from h5 file.test_data:  10%|█         | 758/7532 [00:00<00:02, 2514.74it/s]Loading data from h5 file.test_data:  13%|█▎        | 1010/7532 [00:00<00:02, 2494.05it/s]Loading data from h5 file.test_data:  17%|█▋        | 1263/7532 [00:00<00:02, 2504.17it/s]Loading data from h5 file.test_data:  20%|██        | 1515/7532 [00:00<00:02, 2508.65it/s]Loading data from h5 file.test_data:  23%|██▎       | 1770/7532 [00:00<00:02, 2520.97it/s]Loading data from h5 file.test_data:  27%|██▋       | 2027/7532 [00:00<00:02, 2536.08it/s]Loading data from h5 file.test_data:  30%|███       | 2285/7532 [00:00<00:02, 2547.21it/s]Loading data from h5 file.test_data:  34%|███▍      | 2546/7532 [00:01<00:01, 2565.02it/s]Loading data from h5 file.test_data:  37%|███▋      | 2803/7532 [00:01<00:01, 2565.62it/s]Loading data from h5 file.test_data:  41%|████      | 3060/7532 [00:01<00:01, 2565.76it/s]Loading data from h5 file.test_data:  44%|████▍     | 3321/7532 [00:01<00:01, 2577.83it/s]Loading data from h5 file.test_data:  48%|████▊     | 3581/7532 [00:01<00:01, 2582.59it/s]Loading data from h5 file.test_data:  51%|█████     | 3840/7532 [00:01<00:01, 2580.90it/s]Loading data from h5 file.test_data:  54%|█████▍    | 4099/7532 [00:01<00:01, 2583.05it/s]Loading data from h5 file.test_data:  58%|█████▊    | 4359/7532 [00:01<00:01, 2585.78it/s]Loading data from h5 file.test_data:  61%|██████▏   | 4618/7532 [00:01<00:01, 2580.64it/s]Loading data from h5 file.test_data:  65%|██████▍   | 4877/7532 [00:01<00:01, 2576.64it/s]Loading data from h5 file.test_data:  68%|██████▊   | 5138/7532 [00:02<00:00, 2585.70it/s]Loading data from h5 file.test_data:  72%|███████▏  | 5397/7532 [00:02<00:00, 2562.64it/s]Loading data from h5 file.test_data:  75%|███████▌  | 5659/7532 [00:02<00:00, 2578.03it/s]Loading data from h5 file.test_data:  79%|███████▊  | 5919/7532 [00:02<00:00, 2583.00it/s]Loading data from h5 file.test_data:  82%|████████▏ | 6180/7532 [00:02<00:00, 2589.40it/s]Loading data from h5 file.test_data:  85%|████████▌ | 6439/7532 [00:02<00:00, 2581.34it/s]Loading data from h5 file.test_data:  89%|████████▉ | 6698/7532 [00:02<00:00, 2570.02it/s]Loading data from h5 file.test_data:  92%|█████████▏| 6956/7532 [00:02<00:00, 2535.64it/s]Loading data from h5 file.test_data:  96%|█████████▌| 7211/7532 [00:02<00:00, 2538.20it/s]Loading data from h5 file.test_data:  99%|█████████▉| 7465/7532 [00:02<00:00, 2518.70it/s]Loading data from h5 file.test_data: 100%|██████████| 7532/7532 [00:02<00:00, 2553.73it/s]
+  0%|          | 0/11314 [00:00<?, ?it/s]  0%|          | 1/11314 [00:00<3:04:48,  1.02it/s]  4%|▍         | 501/11314 [00:01<00:17, 626.00it/s] 31%|███       | 3501/11314 [00:01<00:01, 4315.74it/s] 38%|███▊      | 4275/11314 [00:01<00:01, 4842.99it/s] 53%|█████▎    | 6001/11314 [00:01<00:00, 6024.60it/s] 60%|██████    | 6809/11314 [00:01<00:00, 5036.67it/s] 66%|██████▌   | 7453/11314 [00:02<00:01, 3672.13it/s]100%|██████████| 11314/11314 [00:02<00:00, 5095.72it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:00.592927694] [INFO] [text_classification_preprocessor.py:173:transform_features]  11314 features created from 11314 samples.
+  0%|          | 0/7532 [00:00<?, ?it/s]  0%|          | 1/7532 [00:00<1:47:59,  1.16it/s] 20%|█▉        | 1501/7532 [00:01<00:03, 1890.11it/s] 40%|███▉      | 3001/7532 [00:01<00:01, 3348.30it/s] 73%|███████▎  | 5501/7532 [00:01<00:00, 6611.24it/s] 89%|████████▉ | 6713/7532 [00:01<00:00, 7368.16it/s]100%|██████████| 7532/7532 [00:01<00:00, 5048.88it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:06.290203094] [INFO] [text_classification_preprocessor.py:173:transform_features]  7532 features created from 7532 samples.
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:06.574999570] [INFO] [base_data_manager.py:255:_load_federated_data_server] caching test data size 7532
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:06.575616836] [INFO] [base_data_manager.py:274:_load_federated_data_server] train_dl_global number = 84
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:06.575700283] [INFO] [base_data_manager.py:286:_load_federated_data_server] test_dl_global number = 471
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:06.581696033] [INFO] [base_data_manager.py:300:_load_federated_data_local] self.client_index_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+Loading data from h5 file. train data of client_id=0 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=0 [_load_federated_data_local] :  44%|████▍     | 249/565 [00:00<00:00, 2488.47it/s]Loading data from h5 file. train data of client_id=0 [_load_federated_data_local] :  89%|████████▉ | 505/565 [00:00<00:00, 2529.63it/s]Loading data from h5 file. train data of client_id=0 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2522.94it/s]
+Loading data from h5 file. test data of client_id=0 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=0 [_load_federated_data_local] :  68%|██████▊   | 257/376 [00:00<00:00, 2569.51it/s]Loading data from h5 file. test data of client_id=0 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2583.28it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:38,  1.42it/s]100%|██████████| 565/565 [00:00<00:00, 799.72it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:11.674949645] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:42,  1.69it/s]100%|██████████| 376/376 [00:00<00:00, 633.77it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:16.173362016] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=1 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=1 [_load_federated_data_local] :  42%|████▏     | 239/565 [00:00<00:00, 2381.77it/s]Loading data from h5 file. train data of client_id=1 [_load_federated_data_local] :  87%|████████▋ | 493/565 [00:00<00:00, 2473.50it/s]Loading data from h5 file. train data of client_id=1 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2474.97it/s]
+Loading data from h5 file. test data of client_id=1 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=1 [_load_federated_data_local] :  69%|██████▉   | 259/376 [00:00<00:00, 2587.56it/s]Loading data from h5 file. test data of client_id=1 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2575.58it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<07:11,  1.31it/s]100%|██████████| 565/565 [00:00<00:00, 738.60it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:21.374036550] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:29,  1.79it/s]100%|██████████| 376/376 [00:00<00:00, 670.97it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:26.559520959] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=2 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=2 [_load_federated_data_local] :  40%|███▉      | 225/565 [00:00<00:00, 2244.83it/s]Loading data from h5 file. train data of client_id=2 [_load_federated_data_local] :  86%|████████▌ | 487/565 [00:00<00:00, 2462.86it/s]Loading data from h5 file. train data of client_id=2 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2423.29it/s]
+Loading data from h5 file. test data of client_id=2 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=2 [_load_federated_data_local] :  67%|██████▋   | 251/376 [00:00<00:00, 2507.32it/s]Loading data from h5 file. test data of client_id=2 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2529.58it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:01<13:01,  1.39s/it]100%|██████████| 565/565 [00:01<00:00, 407.57it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:32.584001302] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<02:57,  2.12it/s]100%|██████████| 376/376 [00:00<00:00, 795.22it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:37.460819721] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=3 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=3 [_load_federated_data_local] :  41%|████      | 233/565 [00:00<00:00, 2326.46it/s]Loading data from h5 file. train data of client_id=3 [_load_federated_data_local] :  85%|████████▌ | 483/565 [00:00<00:00, 2423.72it/s]Loading data from h5 file. train data of client_id=3 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2430.65it/s]
+Loading data from h5 file. test data of client_id=3 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=3 [_load_federated_data_local] :  67%|██████▋   | 252/376 [00:00<00:00, 2516.24it/s]Loading data from h5 file. test data of client_id=3 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2526.79it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:01<11:55,  1.27s/it]100%|██████████| 565/565 [00:01<00:00, 445.05it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:43.679312467] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:48,  1.64it/s]100%|██████████| 376/376 [00:00<00:00, 617.38it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:48.774894952] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=4 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=4 [_load_federated_data_local] :  42%|████▏     | 236/565 [00:00<00:00, 2359.89it/s]Loading data from h5 file. train data of client_id=4 [_load_federated_data_local] :  86%|████████▋ | 488/565 [00:00<00:00, 2452.39it/s]Loading data from h5 file. train data of client_id=4 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2430.40it/s]
+Loading data from h5 file. test data of client_id=4 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=4 [_load_federated_data_local] :  65%|██████▍   | 244/376 [00:00<00:00, 2435.43it/s]Loading data from h5 file. test data of client_id=4 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2476.82it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<05:50,  1.61it/s]100%|██████████| 565/565 [00:00<00:00, 906.75it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:54.384592294] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:18,  1.89it/s]100%|██████████| 376/376 [00:00<00:00, 708.75it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:29:59.278702259] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=5 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=5 [_load_federated_data_local] :  40%|███▉      | 225/565 [00:00<00:00, 2246.90it/s]Loading data from h5 file. train data of client_id=5 [_load_federated_data_local] :  83%|████████▎ | 471/565 [00:00<00:00, 2369.75it/s]Loading data from h5 file. train data of client_id=5 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2371.14it/s]
+Loading data from h5 file. test data of client_id=5 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=5 [_load_federated_data_local] :  68%|██████▊   | 257/376 [00:00<00:00, 2559.75it/s]Loading data from h5 file. test data of client_id=5 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2547.57it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<09:17,  1.01it/s]100%|██████████| 565/565 [00:00<00:00, 570.82it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:04.980234384] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<04:24,  1.42it/s]100%|██████████| 376/376 [00:00<00:00, 533.17it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:10.470407962] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=6 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=6 [_load_federated_data_local] :  40%|███▉      | 225/565 [00:00<00:00, 2245.78it/s]Loading data from h5 file. train data of client_id=6 [_load_federated_data_local] :  84%|████████▎ | 472/565 [00:00<00:00, 2375.10it/s]Loading data from h5 file. train data of client_id=6 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2372.98it/s]
+Loading data from h5 file. test data of client_id=6 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=6 [_load_federated_data_local] :  69%|██████▉   | 260/376 [00:00<00:00, 2591.85it/s]Loading data from h5 file. test data of client_id=6 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2548.30it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<07:17,  1.29it/s]100%|██████████| 565/565 [00:00<00:00, 727.12it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:15.974911928] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:42,  1.69it/s]100%|██████████| 376/376 [00:00<00:00, 633.80it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:21.079670667] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=7 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=7 [_load_federated_data_local] :  41%|████      | 230/565 [00:00<00:00, 2297.06it/s]Loading data from h5 file. train data of client_id=7 [_load_federated_data_local] :  85%|████████▌ | 482/565 [00:00<00:00, 2424.52it/s]Loading data from h5 file. train data of client_id=7 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2417.11it/s]
+Loading data from h5 file. test data of client_id=7 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=7 [_load_federated_data_local] :  66%|██████▌   | 248/376 [00:00<00:00, 2476.22it/s]Loading data from h5 file. test data of client_id=7 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2489.44it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<07:38,  1.23it/s]100%|██████████| 565/565 [00:00<00:00, 694.87it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:26.986415386] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<04:54,  1.27it/s]100%|██████████| 376/376 [00:00<00:00, 477.64it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:32.369232892] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=8 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=8 [_load_federated_data_local] :  40%|████      | 228/565 [00:00<00:00, 2279.12it/s]Loading data from h5 file. train data of client_id=8 [_load_federated_data_local] :  84%|████████▍ | 474/565 [00:00<00:00, 2384.38it/s]Loading data from h5 file. train data of client_id=8 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2387.05it/s]
+Loading data from h5 file. test data of client_id=8 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=8 [_load_federated_data_local] :  66%|██████▋   | 250/376 [00:00<00:00, 2491.40it/s]Loading data from h5 file. test data of client_id=8 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2522.57it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:54,  1.36it/s]100%|██████████| 565/565 [00:00<00:00, 768.10it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:37.988331317] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:07,  2.00it/s]100%|██████████| 376/376 [00:00<00:00, 751.79it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:42.982264757] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=9 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=9 [_load_federated_data_local] :  41%|████      | 229/565 [00:00<00:00, 2286.39it/s]Loading data from h5 file. train data of client_id=9 [_load_federated_data_local] :  85%|████████▍ | 480/565 [00:00<00:00, 2413.31it/s]Loading data from h5 file. train data of client_id=9 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2414.15it/s]
+Loading data from h5 file. test data of client_id=9 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=9 [_load_federated_data_local] :  67%|██████▋   | 251/376 [00:00<00:00, 2505.39it/s]Loading data from h5 file. test data of client_id=9 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2485.03it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<08:34,  1.10it/s]100%|██████████| 565/565 [00:00<00:00, 619.42it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:48.782040357] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<04:11,  1.49it/s]100%|██████████| 376/376 [00:00<00:00, 561.02it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:54.257517099] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=10 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=10 [_load_federated_data_local] :  41%|████      | 230/565 [00:00<00:00, 2294.06it/s]Loading data from h5 file. train data of client_id=10 [_load_federated_data_local] :  84%|████████▎ | 473/565 [00:00<00:00, 2372.71it/s]Loading data from h5 file. train data of client_id=10 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2391.61it/s]
+Loading data from h5 file. test data of client_id=10 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=10 [_load_federated_data_local] :  68%|██████▊   | 254/376 [00:00<00:00, 2530.67it/s]Loading data from h5 file. test data of client_id=10 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2538.16it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:49,  1.38it/s]100%|██████████| 565/565 [00:00<00:00, 776.89it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:30:59.977440595] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:08,  1.99it/s]100%|██████████| 376/376 [00:00<00:00, 747.35it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:05.089315414] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=11 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=11 [_load_federated_data_local] :  42%|████▏     | 235/565 [00:00<00:00, 2341.67it/s]Loading data from h5 file. train data of client_id=11 [_load_federated_data_local] :  84%|████████▍ | 475/565 [00:00<00:00, 2371.06it/s]Loading data from h5 file. train data of client_id=11 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2376.60it/s]
+Loading data from h5 file. test data of client_id=11 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=11 [_load_federated_data_local] :  67%|██████▋   | 252/376 [00:00<00:00, 2509.79it/s]Loading data from h5 file. test data of client_id=11 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2514.32it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:47,  1.38it/s]100%|██████████| 565/565 [00:00<00:00, 781.21it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:10.960253715] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:19,  1.88it/s]100%|██████████| 376/376 [00:00<00:00, 705.29it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:16.373738288] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=12 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=12 [_load_federated_data_local] :  42%|████▏     | 238/565 [00:00<00:00, 2374.53it/s]Loading data from h5 file. train data of client_id=12 [_load_federated_data_local] :  86%|████████▌ | 485/565 [00:00<00:00, 2429.63it/s]Loading data from h5 file. train data of client_id=12 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2414.91it/s]
+Loading data from h5 file. test data of client_id=12 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=12 [_load_federated_data_local] :  64%|██████▍   | 241/376 [00:00<00:00, 2402.57it/s]Loading data from h5 file. test data of client_id=12 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2464.01it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:00,  1.56it/s]100%|██████████| 565/565 [00:00<00:00, 882.67it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:22.084197044] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:46,  1.66it/s]100%|██████████| 376/376 [00:00<00:00, 620.30it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:27.575650453] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=13 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=13 [_load_federated_data_local] :  40%|███▉      | 224/565 [00:00<00:00, 2235.69it/s]Loading data from h5 file. train data of client_id=13 [_load_federated_data_local] :  83%|████████▎ | 467/565 [00:00<00:00, 2349.59it/s]Loading data from h5 file. train data of client_id=13 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2356.44it/s]
+Loading data from h5 file. test data of client_id=13 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=13 [_load_federated_data_local] :  66%|██████▌   | 249/376 [00:00<00:00, 2485.18it/s]Loading data from h5 file. test data of client_id=13 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2501.18it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:01<13:48,  1.47s/it]100%|██████████| 565/565 [00:01<00:00, 384.31it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:34.590640068] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<04:02,  1.55it/s]100%|██████████| 376/376 [00:00<00:00, 581.72it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:40.367461204] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=14 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=14 [_load_federated_data_local] :  41%|████      | 233/565 [00:00<00:00, 2329.79it/s]Loading data from h5 file. train data of client_id=14 [_load_federated_data_local] :  84%|████████▍ | 474/565 [00:00<00:00, 2376.57it/s]Loading data from h5 file. train data of client_id=14 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2365.05it/s]
+Loading data from h5 file. test data of client_id=14 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=14 [_load_federated_data_local] :  64%|██████▎   | 239/376 [00:00<00:00, 2384.72it/s]Loading data from h5 file. test data of client_id=14 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2409.92it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:19,  1.49it/s]100%|██████████| 565/565 [00:00<00:00, 839.89it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:46.481107950] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:27,  1.81it/s]100%|██████████| 376/376 [00:00<00:00, 680.31it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:51.787925720] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=15 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=15 [_load_federated_data_local] :  40%|████      | 227/565 [00:00<00:00, 2267.53it/s]Loading data from h5 file. train data of client_id=15 [_load_federated_data_local] :  83%|████████▎ | 468/565 [00:00<00:00, 2347.67it/s]Loading data from h5 file. train data of client_id=15 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2358.69it/s]
+Loading data from h5 file. test data of client_id=15 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=15 [_load_federated_data_local] :  66%|██████▌   | 247/376 [00:00<00:00, 2466.90it/s]Loading data from h5 file. test data of client_id=15 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2480.06it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:52,  1.37it/s]100%|██████████| 565/565 [00:00<00:00, 770.91it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:31:57.788106679] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:46,  1.66it/s]100%|██████████| 376/376 [00:00<00:00, 622.06it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:03.283044338] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=16 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=16 [_load_federated_data_local] :  41%|████      | 232/565 [00:00<00:00, 2319.84it/s]Loading data from h5 file. train data of client_id=16 [_load_federated_data_local] :  84%|████████▎ | 472/565 [00:00<00:00, 2363.69it/s]Loading data from h5 file. train data of client_id=16 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2373.80it/s]
+Loading data from h5 file. test data of client_id=16 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=16 [_load_federated_data_local] :  66%|██████▌   | 249/376 [00:00<00:00, 2487.92it/s]Loading data from h5 file. test data of client_id=16 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2481.88it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<06:34,  1.43it/s]100%|██████████| 565/565 [00:00<00:00, 805.99it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:09.568757534] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:27,  1.81it/s]100%|██████████| 376/376 [00:00<00:00, 679.99it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:15.083928823] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=17 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=17 [_load_federated_data_local] :  41%|████      | 231/565 [00:00<00:00, 2302.30it/s]Loading data from h5 file. train data of client_id=17 [_load_federated_data_local] :  84%|████████▍ | 476/565 [00:00<00:00, 2383.36it/s]Loading data from h5 file. train data of client_id=17 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2382.30it/s]
+Loading data from h5 file. test data of client_id=17 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=17 [_load_federated_data_local] :  66%|██████▌   | 248/376 [00:00<00:00, 2472.80it/s]Loading data from h5 file. test data of client_id=17 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2485.98it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<07:12,  1.30it/s]100%|██████████| 565/565 [00:00<00:00, 736.15it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:21.080120563] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:37,  1.72it/s]100%|██████████| 376/376 [00:00<00:00, 646.57it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:26.587411403] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=18 [_load_federated_data_local] :   0%|          | 0/565 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=18 [_load_federated_data_local] :  41%|████      | 230/565 [00:00<00:00, 2294.83it/s]Loading data from h5 file. train data of client_id=18 [_load_federated_data_local] :  84%|████████▍ | 476/565 [00:00<00:00, 2385.11it/s]Loading data from h5 file. train data of client_id=18 [_load_federated_data_local] : 100%|██████████| 565/565 [00:00<00:00, 2380.27it/s]
+Loading data from h5 file. test data of client_id=18 [_load_federated_data_local] :   0%|          | 0/376 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=18 [_load_federated_data_local] :  65%|██████▍   | 243/376 [00:00<00:00, 2425.74it/s]Loading data from h5 file. test data of client_id=18 [_load_federated_data_local] : 100%|██████████| 376/376 [00:00<00:00, 2457.40it/s]
+  0%|          | 0/565 [00:00<?, ?it/s]  0%|          | 1/565 [00:00<08:12,  1.15it/s]100%|██████████| 565/565 [00:00<00:00, 645.86it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:33.078370809] [INFO] [text_classification_preprocessor.py:173:transform_features]  565 features created from 565 samples.
+  0%|          | 0/376 [00:00<?, ?it/s]  0%|          | 1/376 [00:00<03:15,  1.92it/s]100%|██████████| 376/376 [00:00<00:00, 721.43it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:38.667964458] [INFO] [text_classification_preprocessor.py:173:transform_features]  376 features created from 376 samples.
+Loading data from h5 file. train data of client_id=19 [_load_federated_data_local] :   0%|          | 0/579 [00:00<?, ?it/s]Loading data from h5 file. train data of client_id=19 [_load_federated_data_local] :  40%|███▉      | 230/579 [00:00<00:00, 2294.50it/s]Loading data from h5 file. train data of client_id=19 [_load_federated_data_local] :  81%|████████  | 470/579 [00:00<00:00, 2354.38it/s]Loading data from h5 file. train data of client_id=19 [_load_federated_data_local] : 100%|██████████| 579/579 [00:00<00:00, 2370.32it/s]
+Loading data from h5 file. test data of client_id=19 [_load_federated_data_local] :   0%|          | 0/388 [00:00<?, ?it/s]Loading data from h5 file. test data of client_id=19 [_load_federated_data_local] :  64%|██████▎   | 247/388 [00:00<00:00, 2464.34it/s]Loading data from h5 file. test data of client_id=19 [_load_federated_data_local] : 100%|██████████| 388/388 [00:00<00:00, 2480.66it/s]
+  0%|          | 0/579 [00:00<?, ?it/s]  0%|          | 1/579 [00:00<07:20,  1.31it/s]100%|██████████| 579/579 [00:00<00:00, 758.12it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:44.782803058] [INFO] [text_classification_preprocessor.py:173:transform_features]  579 features created from 579 samples.
+  0%|          | 0/388 [00:00<?, ?it/s]  0%|          | 1/388 [00:00<03:41,  1.75it/s]100%|██████████| 388/388 [00:00<00:00, 677.09it/s]
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:50.475208759] [INFO] [text_classification_preprocessor.py:173:transform_features]  388 features created from 388 samples.
+[FedML-Client @device-id-0] [Sun, 24 May 2026 17:32:50.541932344] [INFO] [torch_main.py:148:create_model] create_model. model_name = HuggingFaceTB/SmolLM-135M, output_dim = 20
+Cancellation requested; stopping current tasks.
+Traceback (most recent call last):
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/huggingface_hub/file_download.py", line 633, in xet_get
+    download_files(
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/fednlp/text_classification/torch_main.py", line 303, in <module>
+    model, trainer = create_model(args, output_dim)
+  File "/home/fednlp/text_classification/torch_main.py", line 219, in create_model
+    pretrained = MoRLlamaForCausalLM.from_pretrained(args.model)
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 311, in _wrapper
+    return func(*args, **kwargs)
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 4680, in from_pretrained
+    checkpoint_files, sharded_metadata = _get_resolved_checkpoint_files(
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/transformers/modeling_utils.py", line 1137, in _get_resolved_checkpoint_files
+    resolved_archive_file = cached_file(pretrained_model_name_or_path, filename, **cached_file_kwargs)
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/transformers/utils/hub.py", line 312, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/transformers/utils/hub.py", line 470, in cached_files
+    hf_hub_download(
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/huggingface_hub/file_download.py", line 1014, in hf_hub_download
+    return _hf_hub_download_to_cache_dir(
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/huggingface_hub/file_download.py", line 1175, in _hf_hub_download_to_cache_dir
+    _download_to_tmp_and_move(
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/huggingface_hub/file_download.py", line 1727, in _download_to_tmp_and_move
+    xet_get(
+  File "/home/fednlp/text_classification/.venv/lib/python3.10/site-packages/huggingface_hub/file_download.py", line 633, in xet_get
+    download_files(
+KeyboardInterrupt

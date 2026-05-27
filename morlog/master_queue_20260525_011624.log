@@ -1,0 +1,5 @@
+[2026-05-25 01:16:24] 后台串行任务启动
+[2026-05-25 01:16:24] 准备执行: config/MoR_0.7/fedml_config_compare_mor_expert_24g.yaml
+[2026-05-25 01:16:24] 开始执行: config/MoR_0.7/fedml_config_compare_mor_expert_24g.yaml
+[2026-05-25 01:16:26] 失败: config/MoR_0.7/fedml_config_compare_mor_expert_24g.yaml, exit code=1
+[2026-05-25 01:16:26] 因前一任务失败，停止后续任务

@@ -1,3 +1,6 @@
+--- TASK START: Mon May 25 01:16:24 CST 2026 ---
+--- CONFIG FILE: config/MoR_0.7/fedml_config_compare_mor_expert_24g.yaml ---
+--- CONFIG CONTENT ---
 common_args:
   training_type: "simulation"
   random_seed: 0
@@ -112,3 +115,15 @@ tracking_args:
   wandb_key: 404bae40078b1624faed523c4e9d25b40590e537
   wandb_project: fednlp_compare_24g
   wandb_name: compare_mor_expert_24g
+
+--- COMMAND OUTPUT ---
+
+
+libgomp: Invalid value for environment variable OMP_NUM_THREADS
+Traceback (most recent call last):
+  File "/home/fednlp/text_classification/torch_main.py", line 4, in <module>
+    import fedml
+ModuleNotFoundError: No module named 'fedml'
+
+--- TASK END: Mon May 25 01:16:26 CST 2026 ---
+--- EXIT CODE: 1 ---
