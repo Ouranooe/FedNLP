@@ -93,7 +93,7 @@ train_args:
   ci: 0
 
 validation_args:
-  frequency_of_the_test: 5
+  frequency_of_the_test: 1
 
 device_args:
   worker_num: 1

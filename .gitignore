@@ -1,4 +1,8 @@
 cache_dir/
 output_dir/
 __pycache__/
+wandb/morlog/
+testlog/
+testlog1/
+*.log
 wandb/

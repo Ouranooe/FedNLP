@@ -2,10 +2,11 @@
 name = "fednlp-text-classification"
 version = "0.1.0"
 description = "Federated NLP text classification with MoR/MoE LLaMA"
-requires-python = ">=3.9,<3.12"
+requires-python = ">=3.10,<3.12"
 dependencies = [
-    "torch>=2.0.0",
-    "torchvision>=0.15.0",
+    "torch==2.11.0+cu128",
+    "torchvision==0.26.0+cu128",
+    "torchaudio==2.11.0+cu128",
     "transformers==4.53.3",
     "fedml>=0.8.0",
     "numpy>=1.24.0",
@@ -18,15 +19,12 @@ dependencies = [
     "Pillow>=9.5.0",
 ]
 
-# ── CUDA PyTorch 配置 ──
-# 如果目标机器有 CUDA，取消下面的注释并选择对应版本
-# 可选: cu118, cu121, cu124
-#
-# [[tool.uv.index]]
-# name = "pytorch-cu118"
-# url = "https://download.pytorch.org/whl/cu118"
-# explicit = true
-#
-# [tool.uv.sources]
-# torch = { index = "pytorch-cu118" }
-# torchvision = { index = "pytorch-cu118" }
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
