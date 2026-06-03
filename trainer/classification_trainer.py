@@ -17,6 +17,12 @@ _client_loss_deltas = {}
 # key: client_id, value: first_epoch_loss
 _client_first_epoch_losses = {}
 
+# FedML SP local evaluation calls the same test() twice per client per round:
+# first on the local training split, then on the local test split.
+# Track call order so we can print only the training-split detail log without
+# changing the existing evaluation flow or adding extra computation.
+_client_round_eval_counts = {}
+
 
 def get_trained_clients():
     """获取已训练过的客户端集合"""
@@ -56,6 +62,18 @@ def clear_client_loss_deltas():
     global _client_loss_deltas, _client_first_epoch_losses
     _client_loss_deltas = {}
     _client_first_epoch_losses = {}
+
+
+def infer_eval_split(client_id, round_idx):
+    eval_key = (int(client_id), int(round_idx))
+    eval_count = _client_round_eval_counts.get(eval_key, 0)
+    _client_round_eval_counts[eval_key] = eval_count + 1
+
+    if eval_count == 0:
+        return "train"
+    if eval_count == 1:
+        return "test"
+    return f"eval_{eval_count}"
 
 
 def compute_router_weights(client_ids, weight_mode="absolute", tau=1.0):
@@ -456,8 +474,12 @@ class MyModelTrainer(ClientTrainer):
 
     def test(self, test_data, device, args):
         rank = getattr(args, 'rank', 0)
+        client_id = getattr(self, 'id', getattr(self, 'client_index', rank))
         round_idx = getattr(args, 'round_idx', 0)
-        logging.info(f"----------test_on_the_client {rank} @ round {round_idx}--------")
+        eval_split = infer_eval_split(client_id, round_idx)
+        should_log_detail = eval_split == "train"
+        if should_log_detail:
+            logging.info(f"----------train_on_the_client {client_id} @ round {round_idx}--------")
         model = self.model
 
         model.to(device)
@@ -492,8 +514,9 @@ class MyModelTrainer(ClientTrainer):
                 if not self._is_finite_tensor(pred) or not self._is_finite_tensor(loss):
                     skipped_non_finite_batches += 1
                     logging.warning(
-                        "[FedMoE Stability] Skip non-finite eval batch. client=%s round=%s batch=%s",
-                        rank,
+                        "[FedMoE Stability] Skip non-finite %s batch. client=%s round=%s batch=%s",
+                        eval_split,
+                        client_id,
                         round_idx,
                         batch_idx,
                     )
@@ -511,12 +534,19 @@ class MyModelTrainer(ClientTrainer):
         avg_loss = metrics["test_loss"] / metrics["test_total"] if metrics["test_total"] > 0 else 0.0
         
         # 打印测试结果
-        logging.info(f"Client {rank} @ Round {round_idx} Test Results:")
-        logging.info(f"  Total samples: {metrics['test_total']}")
-        logging.info(f"  Correct: {metrics['test_correct']}")  
-        logging.info(f"  Accuracy: {accuracy:.4f}")
-        logging.info(f"  Average Loss: {avg_loss:.6f}")
+        if should_log_detail:
+            logging.info(f"Client {client_id} @ Round {round_idx} Train Results:")
+            logging.info(f"  Total samples: {metrics['test_total']}")
+            logging.info(f"  Correct: {metrics['test_correct']}")
+            logging.info(f"  Accuracy: {accuracy:.4f}")
+            logging.info(f"  Average Loss: {avg_loss:.6f}")
         if skipped_non_finite_batches > 0:
-            logging.warning(f"  Skipped non-finite eval batches: {skipped_non_finite_batches}")
+            logging.warning(
+                "Client %s @ Round %s %s skipped non-finite eval batches: %s",
+                client_id,
+                round_idx,
+                eval_split,
+                skipped_non_finite_batches,
+            )
         
         return metrics
