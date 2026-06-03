@@ -677,6 +677,70 @@ if __name__ == "__main__":
         # 替换 FedAvgAPI 的 _aggregate 方法
         FedAvgAPI._aggregate = _custom_aggregate
         logging.info("FedML SP FedAvgAPI._aggregate patched to use custom aggregator logic.")
+
+        def _local_test_on_all_clients_with_train_logs(self, round_idx):
+            logging.info("################local_test_on_all_clients : {}".format(round_idx))
+            train_metrics = {"num_samples": [], "num_correct": [], "losses": []}
+            test_metrics = {"num_samples": [], "num_correct": [], "losses": []}
+
+            client = self.client_list[0]
+            for client_idx in range(self.args.client_num_in_total):
+                if self.test_data_local_dict[client_idx] is None:
+                    continue
+
+                client.update_local_dataset(
+                    0,
+                    self.train_data_local_dict[client_idx],
+                    self.test_data_local_dict[client_idx],
+                    self.train_data_local_num_dict[client_idx],
+                )
+
+                train_local_metrics = client.local_test(False)
+                train_total = train_local_metrics["test_total"]
+                train_correct = train_local_metrics["test_correct"]
+                train_loss_sum = train_local_metrics["test_loss"]
+                train_acc = train_correct / train_total if train_total > 0 else 0.0
+                train_avg_loss = train_loss_sum / train_total if train_total > 0 else 0.0
+
+                logging.info("Client %s @ Round %s Train Results:", client_idx, round_idx)
+                logging.info("  Total samples: %s", train_total)
+                logging.info("  Correct: %s", train_correct)
+                logging.info("  Accuracy: %.4f", train_acc)
+                logging.info("  Average Loss: %.6f", train_avg_loss)
+
+                train_metrics["num_samples"].append(train_total)
+                train_metrics["num_correct"].append(train_correct)
+                train_metrics["losses"].append(train_loss_sum)
+
+                test_local_metrics = client.local_test(True)
+                test_metrics["num_samples"].append(test_local_metrics["test_total"])
+                test_metrics["num_correct"].append(test_local_metrics["test_correct"])
+                test_metrics["losses"].append(test_local_metrics["test_loss"])
+
+            train_acc = sum(train_metrics["num_correct"]) / sum(train_metrics["num_samples"])
+            train_loss = sum(train_metrics["losses"]) / sum(train_metrics["num_samples"])
+
+            test_acc = sum(test_metrics["num_correct"]) / sum(test_metrics["num_samples"])
+            test_loss = sum(test_metrics["losses"]) / sum(test_metrics["num_samples"])
+
+            stats = {"training_acc": train_acc, "training_loss": train_loss}
+            if self.args.enable_wandb:
+                wandb.log({"Train/Acc": train_acc, "round": round_idx})
+                wandb.log({"Train/Loss": train_loss, "round": round_idx})
+            mlops.log({"Train/Acc": train_acc, "round": round_idx})
+            mlops.log({"Train/Loss": train_loss, "round": round_idx})
+            logging.info(stats)
+
+            stats = {"test_acc": test_acc, "test_loss": test_loss}
+            if self.args.enable_wandb:
+                wandb.log({"Test/Acc": test_acc, "round": round_idx})
+                wandb.log({"Test/Loss": test_loss, "round": round_idx})
+            mlops.log({"Test/Acc": test_acc, "round": round_idx})
+            mlops.log({"Test/Loss": test_loss, "round": round_idx})
+            logging.info(stats)
+
+        FedAvgAPI._local_test_on_all_clients = _local_test_on_all_clients_with_train_logs
+        logging.info("FedML SP FedAvgAPI._local_test_on_all_clients patched to log per-client train metrics.")
     except ImportError as e:
         logging.warning(f"Could not patch FedML aggregator: {e}")
     # --- AGGREGATOR PATCH END ---
