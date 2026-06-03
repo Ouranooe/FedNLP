@@ -727,16 +727,16 @@ if __name__ == "__main__":
             if self.args.enable_wandb:
                 wandb.log({"Train/Acc": train_acc, "round": round_idx})
                 wandb.log({"Train/Loss": train_loss, "round": round_idx})
-            mlops.log({"Train/Acc": train_acc, "round": round_idx})
-            mlops.log({"Train/Loss": train_loss, "round": round_idx})
+            fedml.mlops.log({"Train/Acc": train_acc, "round": round_idx})
+            fedml.mlops.log({"Train/Loss": train_loss, "round": round_idx})
             logging.info(stats)
 
             stats = {"test_acc": test_acc, "test_loss": test_loss}
             if self.args.enable_wandb:
                 wandb.log({"Test/Acc": test_acc, "round": round_idx})
                 wandb.log({"Test/Loss": test_loss, "round": round_idx})
-            mlops.log({"Test/Acc": test_acc, "round": round_idx})
-            mlops.log({"Test/Loss": test_loss, "round": round_idx})
+            fedml.mlops.log({"Test/Acc": test_acc, "round": round_idx})
+            fedml.mlops.log({"Test/Loss": test_loss, "round": round_idx})
             logging.info(stats)
 
         FedAvgAPI._local_test_on_all_clients = _local_test_on_all_clients_with_train_logs
