@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOG_DIR="testlog1"
+LOG_DIR="trainlog2"
 mkdir -p "$LOG_DIR"
 
 MASTER_LOG="$LOG_DIR/master_queue_$(date +%Y%m%d_%H%M%S).log"

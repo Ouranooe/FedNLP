@@ -6,7 +6,7 @@ data_args:
   dataset: "sst_2"
   data_file_path: ~/fednlp_data/data_files/sst_2_data.h5
   partition_file_path: ~/fednlp_data/partition_files/sst_2_partition.h5
-  partition_method: "niid_label_clients=20_alpha=1"
+  partition_method: "niid_label_clients=8_alpha=0.5"
   reprocess_input_data: false
 
 model_args:
@@ -66,7 +66,7 @@ kv_sharing_args:
 train_args:
   federated_optimizer: "FedAvg"
   client_id_list: "[]"
-  client_num_in_total: 20
+  client_num_in_total: 8  #测试
   client_num_per_round: 8
   comm_round: 200
   epochs: 2
