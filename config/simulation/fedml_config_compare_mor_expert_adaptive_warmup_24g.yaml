@@ -33,13 +33,13 @@ mor_args:
   mor_z_loss: false
   mor_z_coeff: 0
   mor_temp: 1.0
-  mor_loss_coeff: 0.0001
+  mor_loss_coeff: 0.01
   mor_expert_cap_warmup_step: 0
   mor_expert_router_func: "sigmoid"
   mor_expert_alpha: 0.1
   mor_expert_sampling: "aux_loss"
   mor_expert_include_first: true
-  mor_expert_coeff: 0.0001
+  mor_expert_coeff: 0
   mor_expert_gating: "weighted"
   mor_token_router_func: "sigmoid"
   mor_token_alpha: 0.1
@@ -54,7 +54,7 @@ recursive_args:
   recursive_base_depth: null
   recursive_num_recursion: 3
   recursive_sharing: "middle_cycle"
-  recursive_ln_share: false
+  recursive_ln_share: true
   recursive_initialization: "average"
 
 kv_sharing_args:
@@ -68,7 +68,7 @@ train_args:
   client_id_list: "[]"
   client_num_in_total: 8  #测试
   client_num_per_round: 8
-  comm_round: 200
+  comm_round: 100
   epochs: 2
   batch_size: 20
   eval_batch_size: 8

@@ -23,9 +23,9 @@ mor_args:
   mor_adaptive_router_weight: false
   mor_adaptive_router_weight: true
   mor_router_weight_mode: "absolute"
-  mor_router_weight_tau: 1.0
+  mor_router_weight_tau: 0.2
   mor_router_weight_tau_warmup: true
-  mor_router_weight_tau_warmup_start: 2.0
+  mor_router_weight_tau_warmup_start: 0.2
   mor_router_weight_tau_warmup_end: 0.7
   mor_router_weight_tau_warmup_rounds: 30
   mor_capacity: "1.0,0.8,0.6"
