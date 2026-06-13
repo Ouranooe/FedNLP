@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOG_DIR="testlog1"
+LOG_DIR="trainlog2"
 mkdir -p "$LOG_DIR"
 
 MASTER_LOG="$LOG_DIR/master_queue_$(date +%Y%m%d_%H%M%S).log"
@@ -24,7 +24,7 @@ CONFIG_LIST=(
   # "config/MoR_0.9/fedml_config_compare_mor_expert_24g.yaml"
   # "config/MoR_0.9/fedml_config_compare_mor_expert_adaptive_warmup_24g.yaml"
   # "config/MoR_1/fedml_config_compare_mor_expert_24g.yaml"
-  "config/20news/fedml_config_compare_mor_expert_adaptive_warmup_24g.yaml"
+  # "config/20news/fedml_config_compare_mor_expert_adaptive_warmup_24g.yaml"
   "config/agnews/fedml_config_compare_mor_expert_adaptive_warmup_24g.yaml"
   "config/simulation/fedml_config_compare_mor_expert_adaptive_warmup_24g.yaml"
 )

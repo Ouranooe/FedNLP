@@ -6,7 +6,7 @@ data_args:
   dataset: "20news"
   data_file_path: ~/fednlp_data/data_files/20news_data.h5
   partition_file_path: ~/fednlp_data/partition_files/20news_partition.h5
-  partition_method: "niid_label_clients=20_alpha=1"
+  partition_method: "niid_label_clients=8_alpha=0.5"
   reprocess_input_data: false
 
 model_args:
