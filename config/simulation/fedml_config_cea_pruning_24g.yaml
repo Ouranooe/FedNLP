@@ -63,15 +63,11 @@ kv_sharing_args:
   kv_sharing_num_recursion: null
   kv_sharing_sharing: null
 
-# --- CEA-Pruning ---
-cea_args:
-  use_cea_pruning: true
-  cea_candidate_clients: 8
-  cea_keep_clients: 6
-  cea_warmup_rounds: 5
-  cea_ema_beta: 0.9
-  cea_fairness_f: 0.3
-  cea_max_stale_rounds: 6
+# --- CHR-Pruning ---
+chr_args:
+  use_chr_pruning: true
+  chr_warmup_rounds: 5
+  chr_max_pruned_per_round: 2
 
 train_args:
   federated_optimizer: "FedAvg"
@@ -84,7 +80,7 @@ train_args:
   eval_batch_size: 8
   max_seq_length: 64
   fp16: true
-  output_dir: "./outputs/cea_pruning_24g"
+  output_dir: "./outputs/chr_pruning_24g"
   client_optimizer: AdamW
   server_optimizer: sgd
   server_momentum: 0.9
@@ -121,4 +117,4 @@ tracking_args:
   wandb_only_server: true
   wandb_key: 404bae40078b1624faed523c4e9d25b40590e537
   wandb_project: fednlp_compare_24g
-  wandb_name: cea_pruning_24g
+  wandb_name: chr_pruning_24g

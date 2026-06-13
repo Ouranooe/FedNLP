@@ -1,57 +1,45 @@
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
-class CEAPruningManager:
+class CHRPruningManager:
     """
-    Communication-Efficient Adaptive Pruning (CEA-Pruning) manager.
+    Continuous High-Response (CHR) pruning manager.
 
-    Reduces the number of fully-communicating clients per round by pruning
-    low-utility candidates based on historical LGRA weights, using an
-    Oort-style utility-fairness score.
+    Core rule
+    ---------
+    1. Each round, the server first samples a candidate set.
+    2. After warmup, any sampled client with H_c >= streak_threshold is
+       temporarily pruned for the current round.
+    3. After aggregation, H_c is updated from the current round's LGRA
+       ranking:
+         * client in Top-K:     H_c = H_c + 1
+         * client selected but not in Top-K: H_c = 0
 
-    Maintained per-client state
-    --------------------------
-    A_c : float          EMA of historical LGRA weight
-    N_c : int            total number of rounds this client has participated
-    last_selected_round : int   last round in which this client was selected
-
-    Pruning score (Oort-style)
-    --------------------------
-    U_c     = A_c
-    F_c     = max_A - A_c
-    score_c = (1 - f) * U_c + f * F_c
-
-    Protection rules
-    ----------------
-    * N_c == 0 → cannot be pruned  (never participated)
-    * current_round - last_selected_round >= max_stale_rounds → cannot be pruned
+    Notes
+    -----
+    * Pruning is temporary. Once a client is pruned for a round, its streak is
+      reset so it can participate again in future rounds.
+    * The manager keeps only the minimal state needed by CHR.
     """
 
     def __init__(
         self,
         candidate_clients: int = 8,
-        keep_clients: int = 6,
         warmup_rounds: int = 5,
-        ema_beta: float = 0.9,
-        fairness_f: float = 0.3,
-        max_stale_rounds: int = 6,
+        top_k: int = 2,
+        streak_threshold: int = 2,
+        max_pruned_per_round: int = 2,
     ):
         self.candidate_clients = candidate_clients
-        self.keep_clients = keep_clients
         self.warmup_rounds = warmup_rounds
-        self.ema_beta = ema_beta
-        self.fairness_f = fairness_f
-        self.max_stale_rounds = max_stale_rounds
+        self.top_k = max(1, int(top_k))
+        self.streak_threshold = max(1, int(streak_threshold))
+        self.max_pruned_per_round = max(1, int(max_pruned_per_round))
 
-        # per-client state: client_id -> value
-        self.A: Dict[int, float] = {}          # EMA of LGRA weight
-        self.N: Dict[int, int] = {}            # participation count
-        self.last_selected: Dict[int, int] = {}  # last selected round
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        # Per-client state.
+        self.H: Dict[int, int] = {}
+        self.last_lgra_weight: Dict[int, float] = {}
 
     def select_clients(
         self,
@@ -59,66 +47,58 @@ class CEAPruningManager:
         round_idx: int,
     ) -> Tuple[List[int], List[int]]:
         """
-        Given *candidate_ids* (size == candidate_clients), return
-        (selected_ids, pruned_ids).
+        Given *candidate_ids*, return (selected_ids, pruned_ids).
 
         During warmup (round_idx < warmup_rounds) all candidates are kept.
         """
         if round_idx < self.warmup_rounds:
             logging.info(
-                "[CEA] round=%d warmup (<%d), keeping all %d candidates",
-                round_idx, self.warmup_rounds, len(candidate_ids),
-            )
-            return list(candidate_ids), []
-
-        if len(candidate_ids) <= self.keep_clients:
-            return list(candidate_ids), []
-
-        # --- identify protected clients ---
-        protected = set()
-        for cid in candidate_ids:
-            if self.N.get(cid, 0) == 0:
-                protected.add(cid)
-            elif round_idx - self.last_selected.get(cid, -self.max_stale_rounds) >= self.max_stale_rounds:
-                protected.add(cid)
-
-        # --- compute scores for prunable candidates ---
-        prunable = [cid for cid in candidate_ids if cid not in protected]
-        a_values = [self.A.get(cid, 0.0) for cid in prunable]
-        max_a = max(a_values) if a_values else 0.0
-
-        scores: Dict[int, float] = {}
-        for cid in prunable:
-            a_c = self.A.get(cid, 0.0)
-            u_c = a_c
-            f_c = max_a - a_c
-            scores[cid] = (1 - self.fairness_f) * u_c + self.fairness_f * f_c
-
-        # --- decide how many to prune ---
-        num_to_prune = len(candidate_ids) - self.keep_clients
-        # cannot prune more than the prunable set
-        num_to_prune = min(num_to_prune, len(prunable))
-        # if all are protected, nothing to prune
-        if num_to_prune <= 0:
-            logging.info(
-                "[CEA] round=%d all candidates protected or keep>=candidates, no pruning",
+                "[CHR] round=%d warmup (<%d), keeping all %d candidates",
                 round_idx,
+                self.warmup_rounds,
+                len(candidate_ids),
             )
             return list(candidate_ids), []
 
-        # sort prunable by score ascending (lowest score gets pruned)
-        prunable_sorted = sorted(prunable, key=lambda cid: scores[cid])
-        pruned_ids = prunable_sorted[:num_to_prune]
+        eligible = [
+            cid for cid in candidate_ids
+            if self.H.get(cid, 0) >= self.streak_threshold
+        ]
+        if not eligible:
+            return list(candidate_ids), []
+
+        candidate_pos = {cid: idx for idx, cid in enumerate(candidate_ids)}
+        eligible_sorted = sorted(
+            eligible,
+            key=lambda cid: (
+                -self.H.get(cid, 0),
+                -self.last_lgra_weight.get(cid, 0.0),
+                candidate_pos[cid],
+            ),
+        )
+
+        num_to_prune = min(
+            self.max_pruned_per_round,
+            len(eligible_sorted),
+            max(0, len(candidate_ids) - 1),
+        )
+        if num_to_prune <= 0:
+            return list(candidate_ids), []
+
+        pruned_ids = eligible_sorted[:num_to_prune]
         pruned_set = set(pruned_ids)
+
+        # Temporary pruning: reset the streak so the client can rejoin later.
+        for cid in pruned_ids:
+            self.H[cid] = 0
 
         selected = [cid for cid in candidate_ids if cid not in pruned_set]
         pruned = [cid for cid in candidate_ids if cid in pruned_set]
 
         logging.info(
-            "[CEA] round=%d candidates=%s protected=%s pruned=%s selected=%s",
+            "[CHR] round=%d candidates=%s pruned=%s selected=%s",
             round_idx,
             [int(c) for c in candidate_ids],
-            [int(c) for c in sorted(protected)],
             [int(c) for c in pruned],
             [int(c) for c in selected],
         )
@@ -131,45 +111,69 @@ class CEAPruningManager:
         round_idx: int,
     ) -> None:
         """
-        Update EMA, participation count, and last_selected_round after a
-        training round completes.
+        Update H_c after a training round completes.
 
         Args:
             selected_ids: clients that actually trained this round
             lgra_weights: {client_id: lgra_weight} from the aggregator
             round_idx: current round index
         """
+        if not selected_ids:
+            return
+
+        observed = {
+            cid: float(lgra_weights[cid])
+            for cid in selected_ids
+            if cid in lgra_weights
+        }
+        if not observed:
+            logging.info(
+                "[CHR] round=%d no LGRA weights observed, skip H update for selected=%s",
+                round_idx,
+                [int(c) for c in selected_ids],
+            )
+            return
+
+        ranked = sorted(
+            observed.keys(),
+            key=lambda cid: (observed[cid], self.H.get(cid, 0)),
+            reverse=True,
+        )
+        top_ids = set(ranked[: min(self.top_k, len(ranked))])
+
         for cid in selected_ids:
-            # update participation count
-            self.N[cid] = self.N.get(cid, 0) + 1
-            # update last selected round
-            self.last_selected[cid] = round_idx
-            # update EMA of LGRA weight
-            w = lgra_weights.get(cid, None)
-            if w is not None:
-                old_a = self.A.get(cid, w)  # init with first observation
-                self.A[cid] = self.ema_beta * old_a + (1 - self.ema_beta) * w
-            # else: no lgra weight for this client (e.g. warmup), keep old A
+            weight = float(lgra_weights.get(cid, 0.0))
+            self.last_lgra_weight[cid] = weight
+            if cid in top_ids:
+                self.H[cid] = self.H.get(cid, 0) + 1
+            else:
+                self.H[cid] = 0
 
         logging.info(
-            "[CEA] round=%d EMA update: A=%s N=%s",
+            "[CHR] round=%d top_ids=%s H=%s last_lgra=%s",
             round_idx,
-            {int(k): round(v, 6) for k, v in self.A.items()},
-            {int(k): v for k, v in self.N.items()},
+            [int(c) for c in ranked[: min(self.top_k, len(ranked))]],
+            {int(k): v for k, v in self.H.items()},
+            {int(k): round(v, 6) for k, v in self.last_lgra_weight.items()},
         )
 
-    def get_state_summary(self) -> Dict:
+    def get_state_summary(self) -> Dict[str, Dict[int, float]]:
         """Return a JSON-serialisable summary for logging."""
         return {
-            "A": {int(k): round(v, 6) for k, v in self.A.items()},
-            "N": {int(k): v for k, v in self.N.items()},
-            "last_selected": {int(k): v for k, v in self.last_selected.items()},
+            "H": {int(k): int(v) for k, v in self.H.items()},
+            "last_lgra_weight": {
+                int(k): round(v, 6) for k, v in self.last_lgra_weight.items()
+            },
         }
+
+
+# Backward-compatible alias so older imports still work.
+CEAPruningManager = CHRPruningManager
 
 
 # ------------------------------------------------------------------
 # Module-level store for LGRA weights (written by aggregator, read by
-# CEA manager after aggregation).
+# pruning manager after aggregation).
 # ------------------------------------------------------------------
 _last_lgra_weights: Dict[int, float] = {}
 

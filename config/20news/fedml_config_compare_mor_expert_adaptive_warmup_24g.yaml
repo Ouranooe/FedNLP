@@ -63,6 +63,9 @@ kv_sharing_args:
   kv_sharing_num_recursion: null
   kv_sharing_sharing: null
 
+chr_args:
+  use_chr_pruning: true
+
 train_args:
   federated_optimizer: "FedAvg"
   client_id_list: "[]"
